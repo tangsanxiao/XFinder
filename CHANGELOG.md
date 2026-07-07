@@ -5,6 +5,8 @@ Key user-visible changes to XFinder. Newest first.
 ## [Unreleased]
 
 ### Added
+- Skill Center search: a search box in the filter bar narrows the catalog by skill name or description, combined with the state/agent filters.
+- Skill Center now also scans Codex skills (`~/.codex/skills/<name>/SKILL.md`) as a first-class "Codex" agent — Codex started storing skills in the same SKILL.md format, so they now appear in the unified catalog (and aggregate/flag drift against same-named Claude/Trae skills). Its `.system` internals and vendor imports are left out.
 - Agent Inbox: local project-level review workbench for Claude / Codex activity, git changes, risk findings, related sessions, and commit-message drafts.
 - Agent Inbox project governance: pin important projects, multi-select projects, bulk-hide low-value projects, and persist those preferences locally.
 - Finder-style file essentials: Quick Look, Get Info, File Actions menu, recursive search, duplicate, undo/redo for common operations, and cancellable compression tasks.

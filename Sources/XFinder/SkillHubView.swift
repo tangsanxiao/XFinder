@@ -13,6 +13,7 @@ struct SkillHubView: View {
     @State private var selectedID: SkillEntry.ID?
     @State private var stateFilter: SkillStateFilter = .all
     @State private var agentFilter: SkillAgent?
+    @State private var query = ""
 
     private enum SkillStateFilter: Hashable {
         case all, consolidated, notConsolidated
@@ -37,6 +38,11 @@ struct SkillHubView: View {
             default: break
             }
             if let agentFilter, !entry.agents.contains(agentFilter) { return false }
+            let q = query.trimmingCharacters(in: .whitespaces)
+            if !q.isEmpty {
+                return entry.name.localizedCaseInsensitiveContains(q)
+                    || entry.description.localizedCaseInsensitiveContains(q)
+            }
             return true
         }
     }
@@ -56,31 +62,50 @@ struct SkillHubView: View {
     }
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                filterChip(loc("全部", "All"), active: stateFilter == .all && agentFilter == nil) {
-                    stateFilter = .all
-                    agentFilter = nil
-                }
-                Divider().frame(height: 14)
-                filterChip(loc("已统一", "Consolidated"), active: stateFilter == .consolidated) {
-                    stateFilter = stateFilter == .consolidated ? .all : .consolidated
-                }
-                filterChip(loc("未统一", "Not consolidated"), active: stateFilter == .notConsolidated) {
-                    stateFilter = stateFilter == .notConsolidated ? .all : .notConsolidated
-                }
-                if !presentAgents.isEmpty {
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    filterChip(loc("全部", "All"), active: stateFilter == .all && agentFilter == nil) {
+                        stateFilter = .all
+                        agentFilter = nil
+                    }
                     Divider().frame(height: 14)
-                    ForEach(presentAgents) { agent in
-                        filterChip(agent.displayName, active: agentFilter == agent) {
-                            agentFilter = agentFilter == agent ? nil : agent
+                    filterChip(loc("已统一", "Consolidated"), active: stateFilter == .consolidated) {
+                        stateFilter = stateFilter == .consolidated ? .all : .consolidated
+                    }
+                    filterChip(loc("未统一", "Not consolidated"), active: stateFilter == .notConsolidated) {
+                        stateFilter = stateFilter == .notConsolidated ? .all : .notConsolidated
+                    }
+                    if !presentAgents.isEmpty {
+                        Divider().frame(height: 14)
+                        ForEach(presentAgents) { agent in
+                            filterChip(agent.displayName, active: agentFilter == agent) {
+                                agentFilter = agentFilter == agent ? nil : agent
+                            }
                         }
                     }
                 }
             }
-            .padding(.horizontal, isSidebarVisible ? 14 : 18)
-            .padding(.vertical, 6)
+
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField(loc("搜索技能", "Search skills"), text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .frame(width: 150)
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize()
         }
+        .padding(.horizontal, isSidebarVisible ? 14 : 18)
+        .padding(.vertical, 6)
     }
 
     private func filterChip(_ title: String, active: Bool, action: @escaping () -> Void) -> some View {

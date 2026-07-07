@@ -5,6 +5,7 @@ import Foundation
 /// scattered skill landscape into one catalog.
 enum SkillAgent: String, CaseIterable, Identifiable, Sendable {
     case claude
+    case codex
     case traeCN
 
     var id: String { rawValue }
@@ -12,6 +13,7 @@ enum SkillAgent: String, CaseIterable, Identifiable, Sendable {
     var displayName: String {
         switch self {
         case .claude: "Claude"
+        case .codex: "Codex"
         case .traeCN: "Trae CN"
         }
     }
@@ -27,6 +29,11 @@ enum SkillAgent: String, CaseIterable, Identifiable, Sendable {
             // Desktop's per-session plugin caches are ephemeral and not
             // user-managed, so they're intentionally not scanned.)
             return [SkillScanDirectory(url: home.appendingPathComponent(".claude/skills"), isReadOnly: false)]
+        case .codex:
+            // Codex user skills. `.system/` internals and `vendor_imports` are
+            // not the user's to manage, so only the top-level skills dir is
+            // scanned (its `.system` subdir has no top-level SKILL.md).
+            return [SkillScanDirectory(url: home.appendingPathComponent(".codex/skills"), isReadOnly: false)]
         case .traeCN:
             return [
                 SkillScanDirectory(url: home.appendingPathComponent(".trae-cn/skills"), isReadOnly: false),
