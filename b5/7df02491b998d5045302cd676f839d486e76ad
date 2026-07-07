@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_ec539fdfa165c7::t_fa7d2463d132c2 8-9
+Sources/XFinder/SkillHubView.swift
+  s_ec539fdfa165c7::t_01e6055233cc27 16,41-45,65-71,73-84,89-105,107-108
+Sources/XFinder/SkillModels.swift
+  s_ec539fdfa165c7::t_92796fc890517f 8,16,32-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b57df02491b998d5045302cd676f839d486e76ad",
+  "prompts": {},
+  "sessions": {
+    "s_ec539fdfa165c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "afecd5da-717d-49c4-a4cc-4a26ebdb040c",
+        "model": "unknown"
+      },
+      "human_author": "xiao3333 <dairtone+1@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
