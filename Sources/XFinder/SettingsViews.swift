@@ -25,6 +25,8 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     languageSection
                     Divider()
+                    readAloudSection
+                    Divider()
                     skillsSection
                     Divider()
                     summaryLLMSection
@@ -75,6 +77,57 @@ struct SettingsView: View {
             )
             .font(.caption)
             .foregroundStyle(.secondary)
+        }
+    }
+
+    private var readAloudSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(store.loc("文件朗读", "Read Aloud"))
+                .font(.system(size: 13, weight: .semibold))
+            Toggle(isOn: doubaoEnabledBinding) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.loc("优先使用豆包语音", "Prefer Doubao Speech"))
+                    Text(
+                        store.loc(
+                            "未配置、断网或请求失败时自动使用 macOS 系统语音。",
+                            "Uses the macOS system voice when configuration or network requests fail."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+
+            if store.settings.doubaoTTS.enabled {
+                Divider()
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("API Key").font(.system(size: 12, weight: .medium))
+                    SecureField(store.loc("火山引擎语音 API Key", "Volcengine Speech API key"), text: doubaoAPIKeyBinding)
+                        .textFieldStyle(.roundedBorder)
+                }
+                labeledField(
+                    store.loc("资源 ID", "Resource ID"),
+                    text: doubaoResourceIDBinding,
+                    placeholder: "seed-tts-2.0"
+                )
+                labeledField(
+                    store.loc("音色 ID", "Voice ID"),
+                    text: doubaoVoiceIDBinding,
+                    placeholder: "zh_female_vv_uranus_bigtts"
+                )
+                HStack(spacing: 8) {
+                    Link(
+                        destination: URL(string: "https://console.volcengine.com/speech/new/setting/apikeys")!
+                    ) {
+                        Label(store.loc("获取 API Key", "Get API Key"), systemImage: "arrow.up.right.square")
+                    }
+                    Spacer()
+                    Text(store.loc("凭证仅保存在本机", "Credentials stay on this Mac"))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .font(.caption)
+            }
         }
     }
 
@@ -138,6 +191,18 @@ struct SettingsView: View {
     }
     private var llmKeyBinding: Binding<String> {
         Binding(get: { store.settings.summaryLLM.apiKey }, set: { store.settings.summaryLLM.apiKey = $0 })
+    }
+    private var doubaoEnabledBinding: Binding<Bool> {
+        Binding(get: { store.settings.doubaoTTS.enabled }, set: { store.settings.doubaoTTS.enabled = $0 })
+    }
+    private var doubaoAPIKeyBinding: Binding<String> {
+        Binding(get: { store.settings.doubaoTTS.apiKey }, set: { store.settings.doubaoTTS.apiKey = $0 })
+    }
+    private var doubaoResourceIDBinding: Binding<String> {
+        Binding(get: { store.settings.doubaoTTS.resourceID }, set: { store.settings.doubaoTTS.resourceID = $0 })
+    }
+    private var doubaoVoiceIDBinding: Binding<String> {
+        Binding(get: { store.settings.doubaoTTS.voiceID }, set: { store.settings.doubaoTTS.voiceID = $0 })
     }
 
     private var claudeSection: some View {

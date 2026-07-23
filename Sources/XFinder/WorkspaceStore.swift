@@ -173,6 +173,29 @@ final class WorkspaceStore: ObservableObject {
         events.removeAll()
     }
 
+    func handleReadAloudEvent(_ event: ReadAloudEvent) {
+        switch event {
+        case .preparing(let name):
+            statusMessage = loc("正在准备朗读 \(name)…", "Preparing to read \(name)…")
+        case .started(let name, let truncated):
+            statusMessage = loc(
+                truncated ? "正在朗读 \(name)（内容已按性能上限截取）" : "正在朗读 \(name)",
+                truncated ? "Reading \(name) (content limited for performance)" : "Reading \(name)"
+            )
+        case .completed(let name):
+            statusMessage = loc("已朗读完 \(name)", "Finished reading \(name)")
+        case .stopped(let name):
+            statusMessage = loc("已停止朗读 \(name)", "Stopped reading \(name)")
+        case .fallback(let reason):
+            statusMessage = loc(
+                "豆包语音不可用，已切换到系统语音：\(reason)",
+                "Doubao Speech unavailable; using system voice: \(reason)"
+            )
+        case .failed(let message):
+            lastError = loc("朗读失败：\(message)", "Read Aloud failed: \(message)")
+        }
+    }
+
     var agentInboxVisibleProjects: [AgentInboxProject] {
         AgentInboxProjectCatalog.visibleProjects(
             agentInboxProjects,

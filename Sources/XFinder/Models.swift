@@ -99,6 +99,32 @@ struct AppSettings: Codable, Equatable {
     var skillLibraryPath = ""
     /// Third-party LLM (OpenAI-compatible) for Session Center summaries.
     var summaryLLM = SummaryLLMConfig()
+    /// Optional cloud voice for Read Aloud. System speech remains the default
+    /// and is always available as the fallback.
+    var doubaoTTS = DoubaoTTSConfig()
+
+    private enum CodingKeys: String, CodingKey {
+        case claudeIntegrationEnabled
+        case claudeCLIPath
+        case debugModeEnabled
+        case language
+        case skillLibraryPath
+        case summaryLLM
+        case doubaoTTS
+    }
+
+    init() {}
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        claudeIntegrationEnabled = try container.decodeIfPresent(Bool.self, forKey: .claudeIntegrationEnabled) ?? false
+        claudeCLIPath = try container.decodeIfPresent(String.self, forKey: .claudeCLIPath) ?? ""
+        debugModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .debugModeEnabled) ?? false
+        language = try container.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
+        skillLibraryPath = try container.decodeIfPresent(String.self, forKey: .skillLibraryPath) ?? ""
+        summaryLLM = try container.decodeIfPresent(SummaryLLMConfig.self, forKey: .summaryLLM) ?? SummaryLLMConfig()
+        doubaoTTS = try container.decodeIfPresent(DoubaoTTSConfig.self, forKey: .doubaoTTS) ?? DoubaoTTSConfig()
+    }
 }
 
 /// User-configured OpenAI-compatible LLM for summarizing sessions. Off by
@@ -114,6 +140,21 @@ struct SummaryLLMConfig: Codable, Equatable {
         enabled && !apiKey.trimmingCharacters(in: .whitespaces).isEmpty
             && !baseURL.trimmingCharacters(in: .whitespaces).isEmpty
             && !model.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+}
+
+/// User-owned credentials for Volcengine Doubao Speech. The current V3 API
+/// accepts one API key plus a resource and speaker identifier.
+struct DoubaoTTSConfig: Codable, Equatable, Sendable {
+    var enabled = false
+    var apiKey = ""
+    var resourceID = "seed-tts-2.0"
+    var voiceID = "zh_female_vv_uranus_bigtts"
+
+    var isUsable: Bool {
+        enabled && !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !resourceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !voiceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 

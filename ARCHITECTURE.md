@@ -21,7 +21,9 @@ collision handling is covered by tests against temp directories.
 
 ## Process & windowing
 
-- `XFinderApp` (`@main`) hosts a single `WindowGroup` with a hidden titlebar.
+- `XFinderApp` (`@main`) hosts the main workspace `WindowGroup` with a hidden
+  titlebar and a value-driven Markdown document `WindowGroup` opened only on
+  demand.
 - `WindowChromeConfigurator` configures the `NSWindow` once (transparent titlebar,
   full-size content). The app deliberately avoids `NavigationSplitView` and uses a
   custom sidebar/content split to keep titlebar spacing controllable.
@@ -86,6 +88,22 @@ clock for testing). Directory reads run off the main thread via the async
 permissions, access flags). `QuickLookController` delegates to the system
 `QLPreviewPanel` for Finder-style Space previews.
 
+## Markdown documents
+
+- Double-clicking `.md` / `.markdown` sends a `MarkdownWindowRequest` to the
+  value-driven document window; no document controller or parser remains active
+  until the user opens a file.
+- `MarkdownFileService` performs bounded UTF-8 reads and atomic writes off the
+  main actor. Saves compare uncached metadata plus a content fingerprint so an
+  external edit cannot be overwritten silently.
+- `MarkdownDocumentParsing` uses the pinned `swift-markdown` parser and converts
+  its immutable syntax tree into a small `Sendable` render model. Parsing is
+  debounced, cancellable by generation, and capped by character, block, nesting,
+  table-row, and image-size limits.
+- `MarkdownDocumentView` uses native SwiftUI controls for selectable preview,
+  source editing, and split mode. Remote images are never fetched; local images
+  are decoded into bounded thumbnails only when their preview rows appear.
+
 ## Git awareness & agent bridge
 
 - `GitStatusService` shells out to `git` (off-main) and returns an immutable
@@ -135,6 +153,8 @@ permissions, access flags). `QuickLookController` delegates to the system
 - Agent Inbox hidden/pinned projects → `agent-inbox-preferences.json` in the
   same Application Support directory.
 - `dist/`, `release/`, `.build/`, and `AI_CONTEXT.md` are gitignored.
+- Third-party license texts are tracked under `ThirdPartyLicenses/` and copied
+  into packaged apps with `THIRD_PARTY_NOTICES.md`.
 
 ## CI / distribution
 

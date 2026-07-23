@@ -2,7 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct BrowserPane: View {
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: WorkspaceStore
+    @EnvironmentObject private var speechController: ReadAloudController
     let root: DirectoryItem
     let isFocused: Bool
     let viewMode: BrowserViewMode
@@ -44,6 +46,7 @@ struct BrowserPane: View {
     @State private var showsGoToPath = false
     @State private var goToPathText = ""
     @State private var keyMonitor: Any?
+    @State private var hostingWindowNumber: Int?
     @State private var scheduledReloadTask: Task<Void, Never>?
     @State private var gitSnapshot: GitDirectorySnapshot?
     @State private var showsProjectCard = false
@@ -120,6 +123,7 @@ struct BrowserPane: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
+        .background(HostingWindowNumberReader(windowNumber: $hostingWindowNumber))
         .clipShape(RoundedRectangle(cornerRadius: isFocused ? 16 : 0))
         .overlay {
             RoundedRectangle(cornerRadius: isFocused ? 16 : 0)
@@ -289,6 +293,8 @@ struct BrowserPane: View {
                         onFocus()
                         quickLook([file])
                     },
+                    canReadAloud: canReadAloud(file),
+                    readAloud: { startReadAloud(file) },
                     canBrowseInline: canBrowseInline(file),
                     onBeginDrag: { beginDrag(file) },
                     dropInto: { providers in dropOnFolder(file.url, providers: providers) }
@@ -349,6 +355,8 @@ struct BrowserPane: View {
                                 duplicate: { duplicateTargets(of: row.file) },
                                 getInfo: { showInfo(for: row.file.url) },
                                 quickLook: { quickLook(actionTargets(for: row.file)) },
+                                canReadAloud: canReadAloud(row.file),
+                                readAloud: { startReadAloud(row.file) },
                                 claudeEnabled: store.settings.claudeIntegrationEnabled,
                                 askClaude: { askClaudeAboutSelection(row.file) },
                                 copyTo: { destination in copyTargets(of: row.file, to: destination) },
@@ -458,13 +466,18 @@ struct BrowserPane: View {
     // MARK: - Keyboard navigation
 
     /// Handles a key event for this pane; returns nil to consume it. Events are
-    /// passed through while unfocused, renaming, or typing in any text field.
+    /// passed through while another window/pane is focused, renaming, or typing
+    /// in any text field.
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         // Focus MUST be read live from the store, not from the captured
         // `isFocused` let: the monitor closure holds the view-struct copy from
         // install time, whose lets are frozen — the pane focused back then
         // would keep consuming keys forever. The store reference stays current.
-        guard store.focusedPaneID == root.id, renamingFileID == nil, showsGoToPath == false, showsAnalysis == false
+        guard NSApp.keyWindow?.windowNumber == hostingWindowNumber,
+            store.focusedPaneID == root.id,
+            renamingFileID == nil,
+            showsGoToPath == false,
+            showsAnalysis == false
         else { return event }
         if NSApp.keyWindow?.firstResponder is NSTextView { return event }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -512,6 +525,12 @@ struct BrowserPane: View {
             return nil
         case 9 where modifiers == [.command]:  // Cmd+V — paste files here
             pasteFromPasteboard()
+            return nil
+        case 6 where modifiers == [.command, .shift]:  // Cmd+Shift+Z — redo file operation
+            store.redoLastFileOperation()
+            return nil
+        case 6 where modifiers == [.command]:  // Cmd+Z — undo file operation
+            store.undoLastFileOperation()
             return nil
         case 3 where modifiers == [.command]:  // Cmd+F — filter
             showsFilter = true
@@ -594,6 +613,8 @@ struct BrowserPane: View {
             showInfoForSelection()
         case .quickLook:
             quickLookSelection()
+        case .readAloudSelection:
+            readSelectedFileAloud()
         case .recursiveSearch:
             showRecursiveSearch()
         case .selectAll:
@@ -937,12 +958,12 @@ struct BrowserPane: View {
     }
 
     private var trailingActions: some View {
-        // Three groups, separated by thin dividers, so the row reads as
-        // [view & filter] · [project status] · [more ▾] · [close] instead of a
-        // flat wall of icons.
+        // Selection and view controls stay together; project status and pane
+        // management remain separated so the row is easy to scan.
         HStack(spacing: 8) {
             categoryFilterButton
             viewModeButton
+            readAloudMenu
 
             if gitSnapshot != nil {
                 toolbarSeparator
@@ -961,6 +982,91 @@ struct BrowserPane: View {
                 store.removeDirectory(root)
             }
         }
+    }
+
+    private var readAloudMenu: some View {
+        let selectedFile = selectedReadAloudFile
+        return Menu {
+            if speechController.isActive {
+                if let sourceName = speechController.sourceName {
+                    Text(sourceName)
+                }
+                if speechController.totalChunkCount > 0 {
+                    Text(
+                        store.loc(
+                            "第 \(speechController.currentChunkNumber) / \(speechController.totalChunkCount) 段",
+                            "Section \(speechController.currentChunkNumber) of \(speechController.totalChunkCount)"
+                        )
+                    )
+                }
+                Button {
+                    speechController.togglePause()
+                } label: {
+                    Label(
+                        speechController.phase == .paused
+                            ? store.loc("继续", "Resume") : store.loc("暂停", "Pause"),
+                        systemImage: speechController.phase == .paused ? "play.fill" : "pause.fill"
+                    )
+                }
+                .disabled(!speechController.canPauseOrResume)
+
+                Button {
+                    speechController.restart()
+                } label: {
+                    Label(store.loc("从头开始", "Start Over"), systemImage: "backward.end.fill")
+                }
+                .disabled(speechController.phase == .loading)
+
+                Button {
+                    speechController.stop()
+                } label: {
+                    Label(store.loc("停止", "Stop"), systemImage: "stop.fill")
+                }
+                Divider()
+            }
+
+            if let selectedFile, !speechController.isReading(selectedFile.url) {
+                Button {
+                    startReadAloud(selectedFile)
+                } label: {
+                    Label(
+                        store.loc("朗读 \(selectedFile.name)", "Read \(selectedFile.name)"),
+                        systemImage: "speaker.wave.2"
+                    )
+                }
+            } else if !speechController.isActive {
+                Text(store.loc("请选择一个可朗读文件", "Select one readable file"))
+            }
+
+            Divider()
+            Menu(store.loc("语速", "Speed")) {
+                ForEach(ReadAloudSpeed.allCases) { speed in
+                    Button {
+                        speechController.setSpeed(speed)
+                    } label: {
+                        if speechController.speed == speed {
+                            Label(speed.title, systemImage: "checkmark")
+                        } else {
+                            Text(speed.title)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: speechController.phase == .paused ? "speaker.slash" : "speaker.wave.2")
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+                .foregroundStyle(speechController.isActive ? Color.accentColor : Color.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(!speechController.isActive && selectedFile == nil)
+        .helpTip(
+            speechController.isActive
+                ? store.loc("朗读控制", "Read aloud controls")
+                : store.loc("朗读所选文件", "Read selected file")
+        )
     }
 
     private var toolbarSeparator: some View {
@@ -1371,6 +1477,47 @@ struct BrowserPane: View {
         selectableFilesForCurrentView.filter { selection.contains($0.id) }
     }
 
+    private var selectedReadAloudFile: BrowserFileItem? {
+        guard selection.count == 1, let selectedID = selection.first else { return nil }
+        if let item = items.first(where: { $0.id == selectedID }) {
+            return ReadAloudFileKind.detect(item: item) == nil ? nil : item
+        }
+        for children in expandedContents.values {
+            if let item = children.first(where: { $0.id == selectedID }) {
+                return ReadAloudFileKind.detect(item: item) == nil ? nil : item
+            }
+        }
+        return nil
+    }
+
+    private func canReadAloud(_ file: BrowserFileItem) -> Bool {
+        let targetCount = selection.contains(file.id) ? selection.count : 1
+        return targetCount == 1 && ReadAloudFileKind.detect(item: file) != nil
+    }
+
+    private func readSelectedFileAloud() {
+        guard let file = selectedReadAloudFile else {
+            store.lastError = store.loc(
+                "请选择一个支持朗读的文本或 PDF 文件。",
+                "Select one supported text or PDF file to read aloud."
+            )
+            return
+        }
+        startReadAloud(file)
+    }
+
+    private func startReadAloud(_ file: BrowserFileItem) {
+        onFocus()
+        guard canReadAloud(file), let kind = ReadAloudFileKind.detect(item: file) else {
+            store.lastError = store.loc(
+                "一次只能朗读一个支持的文本或 PDF 文件。",
+                "Read Aloud supports one text or PDF file at a time."
+            )
+            return
+        }
+        speechController.start(url: file.url, kind: kind)
+    }
+
     private func columnList(_ source: [BrowserFileItem], width: CGFloat) -> some View {
         LazyVStack(spacing: 0) {
             ForEach(source) { file in
@@ -1402,6 +1549,8 @@ struct BrowserPane: View {
                     duplicate: { duplicateTargets(of: file) },
                     getInfo: { showInfo(for: file.url) },
                     quickLook: { quickLook(actionTargets(for: file)) },
+                    canReadAloud: canReadAloud(file),
+                    readAloud: { startReadAloud(file) },
                     copyTo: { destination in copyTargets(of: file, to: destination) },
                     moveTo: { destination in moveTargets(of: file, to: destination) },
                     onBeginDrag: { beginDrag(file) },
@@ -1883,6 +2032,8 @@ struct BrowserPane: View {
         cancelPendingRename()
         if canBrowseInline(file) {
             navigate(to: file.url)
+        } else if MarkdownFileService.isMarkdownURL(file.url) {
+            openWindow(value: MarkdownWindowRequest(url: file.url))
         } else {
             NSWorkspace.shared.open(file.url)
         }

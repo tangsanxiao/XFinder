@@ -85,6 +85,24 @@ import Testing
     #expect(relaunched.settings.claudeCLIPath == "/opt/homebrew/bin/claude")
 }
 
+@Test func legacySettingsDecodeWithDoubaoDisabled() throws {
+    let data = Data(
+        """
+        {
+          "claudeIntegrationEnabled": true,
+          "language": "english"
+        }
+        """.utf8
+    )
+
+    let settings = try JSONDecoder().decode(AppSettings.self, from: data)
+
+    #expect(settings.claudeIntegrationEnabled)
+    #expect(settings.language == .english)
+    #expect(!settings.doubaoTTS.enabled)
+    #expect(settings.doubaoTTS.resourceID == "seed-tts-2.0")
+}
+
 @Test func cliCommandQuotesCustomPathAndFallsBackToPath() {
     #expect(ClaudeBridge.cliCommand(path: "") == "claude")
     #expect(ClaudeBridge.cliCommand(path: "  ") == "claude")

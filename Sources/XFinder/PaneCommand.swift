@@ -8,6 +8,7 @@ enum PaneCommand: String {
     case renameSelection
     case getInfo
     case quickLook
+    case readAloudSelection
     case recursiveSearch
     case selectAll
     case copySelection

@@ -36,6 +36,8 @@ cp ".build/release/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$ROOT_DIR/Assets/XFinder.icns" "$RESOURCES_DIR/XFinder.icns"
 # Bundled so the in-app "What's New" panel can show it.
 cp "$ROOT_DIR/CHANGELOG.md" "$RESOURCES_DIR/CHANGELOG.md"
+cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$RESOURCES_DIR/THIRD_PARTY_NOTICES.md"
+cp -R "$ROOT_DIR/ThirdPartyLicenses" "$RESOURCES_DIR/ThirdPartyLicenses"
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

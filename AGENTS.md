@@ -43,6 +43,14 @@
   **要求**：默认性能优先；改动前必须明确说明性能影响面（是否新增扫描/轮询/递归/主线程 IO/大数组重建/频繁状态发布），并优先采用懒加载、缓存、debounce、后台执行、取消传播和有界数据处理。高风险改动要补测试或采样/计时证据，汇报时说明验证方式。
   **原因**：XFinder 的核心体验依赖本地大目录和多 agent 产物的快速浏览；未评估的刷新、扫描或 SwiftUI diff 很容易造成 CPU 飙高、卡顿或后台任务堆积。
 
+- **情况**：朗读文件可能读取大型文本/PDF，`AVSpeechSynthesizerDelegate` 还能按词高频回调。
+  **要求**：朗读只能由用户主动触发；文件提取必须在后台、有文件/页数/字符上限、支持取消并复用单文件缓存；全应用只保留一个语音队列，UI 只按段落更新状态，禁止把逐词回调直接发布到 SwiftUI。
+  **原因**：无限制解析或逐词刷新会在大文档上占用 CPU/内存，并让多面板重复创建语音任务。
+
+- **情况**：云端 TTS 会增加网络等待、音频内存、解码开销和按字符计费，断网时还可能对每个段落重复超时。
+  **要求**：云端语音默认关闭且只在用户朗读时请求；文本和响应必须有界，音频缓存设总量上限，停止/切换时传播取消；失败后立即按段切换系统语音并设置短时熔断，禁止后台预生成整篇音频或无界预取。
+  **原因**：有界串行请求和失败熔断可避免大文档占满内存、产生无效费用，或在网络异常时堆积请求。
+
 - **情况**：视图代码（`@MainActor`）里直接同步调用 `FileBrowserService.contents` / `FileManager` 读目录。
   **要求**：视图里的目录读取一律走 `FileBrowserService.contents` 的 **async 重载**（内部 `Task.detached` 下沉到后台线程）；并发 reload 用 generation 计数丢弃过期结果，防止慢目录覆盖新结果。
   **原因**：同步 IO 跑在主线程，遇到大目录（node_modules、大 Downloads）整个 UI 卡死，与"高性能"目标直接冲突。
@@ -64,8 +72,8 @@
   **原因**：锚定角落的气泡不跟随鼠标（左侧按钮的提示出现在最右边）；z 序不够会被下方文件面板盖住。
 
 - **情况**：键盘快捷键经由每个面板安装的 `NSEvent.addLocalMonitorForEvents` 处理（见 `BrowserPaneView.handleKeyDown`）。
-  **要求**：handler 必须先做三重放行检查（非聚焦面板 / 正在重命名 / `firstResponder is NSTextView`）再消费事件；新增快捷键加进 `handleKeyDown` 的 switch，不要再装新的 monitor。
-  **原因**：local monitor 是 app 级的，每个面板都会收到所有按键；不检查焦点会让多个面板同时响应，不检查文本输入会吞掉用户在 TextField 里的打字。
+  **要求**：handler 必须先做四重放行检查（当前 key window 不是面板所属窗口 / 非聚焦面板 / 正在重命名 / `firstResponder is NSTextView`）再消费事件；新增快捷键加进 `handleKeyDown` 的 switch，不要再装新的 monitor。`Cmd+A/C/V/Z` 等文本编辑标准快捷键不得在 app commands 中全局覆盖，面板文件操作由这个 monitor 处理。
+  **原因**：local monitor 是 app 级的，每个面板都会收到所有窗口的按键；不检查窗口/焦点会让后台面板响应 Markdown 等独立窗口，不检查文本输入或全局覆盖标准命令会吞掉编辑器操作。
 
 - **情况**：`.onAppear` 安装的长生命周期闭包（NSEvent monitor、Task 循环等）捕获的是**安装时刻的视图结构体副本**。
   **要求**：这类闭包里**绝不能读视图的 `let` 属性**（如 `isFocused`、`viewMode`）做判断——它们被永久冻结在安装时的值。必须改读 live 来源：store 的 `@Published`（引用类型，永远最新，如 `store.focusedPaneID == root.id`）或 `@State`（存储盒跨渲染共享；let 需要时用 @State 镜像 + `onChange` 同步）。
@@ -102,6 +110,14 @@
 - **情况**：行右键菜单作用于多选（Trash / Copy To / Move To / Compress / Ask Claude）。
   **要求**：这类操作必须遍历 `actionTargets(for:)` 返回的全部目标，不能只对被右键的那一行 `row.file` 生效。新增的行级批量操作走 `trashTargets`/`copyTargets`/`moveTargets` 这类统一入口。
   **原因**：曾导致选中多个文件却只删/只移了一个，其余静默不动。
+
+- **情况**：Markdown 阅读/编辑会在用户输入时反复解析，也可能打开大文件、表格或本地图片。
+  **要求**：只在用户主动打开文档后加载；文件 IO 与解析必须离开主线程，编辑预览要 debounce 并用 generation 丢弃过期结果；文件、字符、block、嵌套、表格和图片均保持硬上限，禁止加载远程图片。保存必须使用原子写入，并用未缓存元数据加内容指纹检测外部修改。
+  **原因**：无界实时解析和图片解码会造成 CPU/内存峰值；只看文件时间或 URL 缓存元数据会漏掉外部改写并静默覆盖用户数据。
+
+- **情况**：SwiftUI 的 `Divider` 放进 table cell 的 overlay 后会根据布局提议推断方向，曾把列分隔线画成横线并穿过文字。
+  **要求**：Markdown 表格的列/行边界使用方向明确、尺寸固定的 `Rectangle`（列宽 1、行高 1），不要在 cell overlay 中使用自动定向的 `Divider`。
+  **原因**：overlay 的尺寸提议与普通 HStack/VStack 不同，`Divider` 的自动方向在这里不可靠。
 
 ## 跨 agent 中心(Skill / Session)
 

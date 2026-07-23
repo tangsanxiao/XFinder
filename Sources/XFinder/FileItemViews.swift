@@ -96,6 +96,8 @@ struct FileRow: View {
     let duplicate: () -> Void
     let getInfo: () -> Void
     let quickLook: () -> Void
+    let canReadAloud: Bool
+    let readAloud: () -> Void
     let claudeEnabled: Bool
     let askClaude: () -> Void
     let copyTo: (PaneDestination) -> Void
@@ -181,7 +183,12 @@ struct FileRow: View {
         }
         .contextMenu {
             Button(canBrowseInline ? "Enter Folder" : "Open") { open() }
+            if MarkdownFileService.isMarkdownURL(file.url) {
+                Button("Open with Default App") { NSWorkspace.shared.open(file.url) }
+            }
             Button("Quick Look") { quickLook() }
+            Button("Read Aloud") { readAloud() }
+                .disabled(!canReadAloud)
             Button("Get Info") { getInfo() }
             Button("Reveal in Finder") { reveal() }
             Button("Copy Path") { copy() }
@@ -288,6 +295,8 @@ struct IconFileCell: View {
     let duplicate: () -> Void
     let getInfo: () -> Void
     let quickLook: () -> Void
+    let canReadAloud: Bool
+    let readAloud: () -> Void
     let canBrowseInline: Bool
     let onBeginDrag: () -> Void
     let dropInto: ([NSItemProvider]) -> Bool
@@ -333,7 +342,12 @@ struct IconFileCell: View {
         }
         .contextMenu {
             Button("Open") { open() }
+            if MarkdownFileService.isMarkdownURL(file.url) {
+                Button("Open with Default App") { NSWorkspace.shared.open(file.url) }
+            }
             Button("Quick Look") { quickLook() }
+            Button("Read Aloud") { readAloud() }
+                .disabled(!canReadAloud)
             Button("Get Info") { getInfo() }
             Button("Duplicate") { duplicate() }
             Button("Move to Trash", role: .destructive) { trash() }
@@ -407,6 +421,8 @@ struct ColumnFileRow: View {
     let duplicate: () -> Void
     let getInfo: () -> Void
     let quickLook: () -> Void
+    let canReadAloud: Bool
+    let readAloud: () -> Void
     let copyTo: (PaneDestination) -> Void
     let moveTo: (PaneDestination) -> Void
     let onBeginDrag: () -> Void
@@ -460,7 +476,12 @@ struct ColumnFileRow: View {
         }
         .contextMenu {
             Button(canBrowseInline ? "Enter Folder" : "Open") { open() }
+            if MarkdownFileService.isMarkdownURL(file.url) {
+                Button("Open with Default App") { NSWorkspace.shared.open(file.url) }
+            }
             Button("Quick Look") { quickLook() }
+            Button("Read Aloud") { readAloud() }
+                .disabled(!canReadAloud)
             Button("Get Info") { getInfo() }
             Button("Reveal in Finder") { reveal() }
             Button("Copy Path") { copy() }

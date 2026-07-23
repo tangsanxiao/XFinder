@@ -71,6 +71,27 @@ struct WindowDragArea: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
+struct HostingWindowNumberReader: NSViewRepresentable {
+    @Binding var windowNumber: Int?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        updateWindowNumber(from: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        updateWindowNumber(from: nsView)
+    }
+
+    private func updateWindowNumber(from view: NSView) {
+        DispatchQueue.main.async {
+            let newValue = view.window?.windowNumber
+            if windowNumber != newValue { windowNumber = newValue }
+        }
+    }
+}
+
 /// Sets the mouse cursor over a region using an AppKit tracking area on a
 /// persistent NSView, instead of SwiftUI `.onHover` + cursor push/pop. The
 /// push/pop approach lost its pairing during SwiftUI re-renders (the resizable

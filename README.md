@@ -23,7 +23,9 @@ Designed and implemented with help from an LLM. It doesn't try to replace Finder
 - **Category quick-filter**: narrow a pane to documents / code / data / images / archives / logs / build-and-dependency noise (rule-based, no LLM).
 - Multi-selection with Shift / Cmd / Cmd+A; context-menu copy/move to another pane, duplicate, compress to zip (collision-safe), move to Trash — all act on the whole selection.
 - Drag files onto a folder row to move them (multi-file aware); inline rename; create folders and Markdown files; undo/redo common file operations.
+- Double-click a Markdown file to open the built-in lightweight reader/editor. Preview, source, and split modes support headings, links, task lists, tables, code blocks, and local images; saves detect external changes before overwriting.
 - Finder-style essentials: Space Quick Look, Cmd+I Get Info, app menu commands for common File/Edit actions, and a cancellable file-task overlay for long compression jobs.
+- Read Aloud for selected Markdown, text/code/data files, HTML/RTF, and searchable PDFs. Optional Doubao Speech provides a more natural voice; configuration/network failures automatically fall back to the local macOS voice.
 - Real Finder system icons; sortable, resizable columns; relative modified dates; zebra striping.
 - Live auto-refresh via FSEvents; reveal in Finder; open Terminal at a folder.
 - Starred folders and system bookmarks (Desktop, Downloads, Documents, …) in the sidebar.
@@ -47,6 +49,7 @@ Designed and implemented with help from an LLM. It doesn't try to replace Finder
 Open from the gear at the bottom of the sidebar:
 
 - **Language** — System / 中文 / English.
+- **Read Aloud** — optional Doubao Speech API key, resource, and voice; off by default with system-voice fallback.
 - **Claude integration** — off by default; optional custom `claude` CLI path. When off, all Claude actions are hidden.
 - **Debug mode** — shows the Activity & Errors panel and the Restart button.
 - **What's New** — the in-app changelog.
@@ -74,7 +77,7 @@ Test builds are **ad-hoc signed**, so on first launch macOS may block the app �
 
 ### License
 
-MIT — see `LICENSE`.
+MIT — see `LICENSE`. Bundled dependency licenses are listed in `THIRD_PARTY_NOTICES.md`.
 
 ---
 
@@ -95,7 +98,9 @@ XFinder 把多个文件夹放进同一个窗口,让你在多个目录之间同�
 - **类型快速过滤**:把面板收窄到文档 / 代码 / 数据 / 图片 / 压缩包 / 日志 / 构建依赖噪音(纯规则,不用 LLM)。
 - Shift / Cmd / Cmd+A 多选;右键复制/移动到另一面板、复制副本、压缩为 zip(自动避免重名)、移到废纸篓——均对整组选中生效。
 - 把文件拖到文件夹行即移动(支持多选);内联重命名;新建文件夹和 Markdown 文件;常见文件操作支持撤销/重做。
+- 双击 Markdown 文件可进入内置轻量阅读器/编辑器;支持阅读、源码、分屏模式以及标题、链接、任务列表、表格、代码块和本地图片,保存前会检测外部修改,避免静默覆盖。
 - Finder 基础体验:空格 Quick Look、Cmd+I 查看信息、菜单栏常用 File/Edit 命令,以及可取消的压缩任务浮层。
+- 朗读所选 Markdown、文本/代码/数据文件、HTML/RTF 和可搜索 PDF;可选豆包语音获得更自然的效果,未配置、断网或请求失败时自动切回 macOS 系统语音。
 - 真实 Finder 系统图标;可排序、可调宽的列;相对修改时间;斑马纹。
 - 基于 FSEvents 的实时自动刷新;在 Finder 中显示;在目录打开终端。
 - 侧边栏收藏夹与系统书签(桌面、下载、文稿……)。
@@ -119,6 +124,7 @@ XFinder 把多个文件夹放进同一个窗口,让你在多个目录之间同�
 从侧边栏底部的齿轮进入:
 
 - **语言** —— 跟随系统 / 中文 / English。
+- **文件朗读** —— 可选配置豆包语音 API Key、资源和音色;默认关闭并始终保留系统语音兜底。
 - **Claude 集成** —— 默认关闭;可自定义 `claude` CLI 路径;关闭时所有 Claude 入口隐藏。
 - **Debug 模式** —— 显示"操作与错误记录"面板和重启按钮。
 - **What's New** —— 应用内更新日志。
@@ -143,6 +149,10 @@ swift test                     # 运行测试
 - 尚未 Developer ID 签名与公证;打包版本面向 Apple Silicon。
 - 不追求完整 Finder 对齐(无标签、智能文件夹、服务器浏览、丰富元数据编辑)。
 - 自动化测试覆盖纯逻辑 / 文件操作 / git 解析;GUI 行为人工验证。
+
+### 许可
+
+MIT — 见 `LICENSE`;随应用分发的依赖许可见 `THIRD_PARTY_NOTICES.md`。
 
 ### 许可证
 
