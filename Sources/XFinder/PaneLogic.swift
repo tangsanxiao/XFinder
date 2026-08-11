@@ -39,6 +39,79 @@ enum PaneFilterLogic {
     }
 }
 
+enum PaneFileSortLogic {
+    static func sort(
+        _ source: [BrowserFileItem],
+        key: BrowserSortKey,
+        ascending: Bool,
+        stableDirectoryModificationDates: [String: Date] = [:]
+    ) -> [BrowserFileItem] {
+        source.sorted { lhs, rhs in
+            let order: ComparisonResult
+            switch key {
+            case .name:
+                order = lhs.name.localizedStandardCompare(rhs.name)
+            case .modified:
+                order = compareDates(
+                    sortableModificationDate(
+                        for: lhs, stableDirectoryModificationDates: stableDirectoryModificationDates),
+                    sortableModificationDate(
+                        for: rhs, stableDirectoryModificationDates: stableDirectoryModificationDates)
+                )
+            case .kind:
+                let kindOrder = lhs.typeDescription.localizedStandardCompare(rhs.typeDescription)
+                order = kindOrder == .orderedSame ? lhs.name.localizedStandardCompare(rhs.name) : kindOrder
+            }
+
+            if order == .orderedSame {
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+            return ascending ? order == .orderedAscending : order == .orderedDescending
+        }
+    }
+
+    static func directoryModificationDates(in groups: [[BrowserFileItem]]) -> [String: Date] {
+        groups
+            .flatMap { $0 }
+            .reduce(into: [:]) { result, item in
+                guard item.isDirectory, let date = item.modificationDate else { return }
+                result[item.id] = date
+            }
+    }
+
+    static func mergedDirectoryModificationDates(
+        existing: [String: Date],
+        groups: [[BrowserFileItem]]
+    ) -> [String: Date] {
+        let current = directoryModificationDates(in: groups)
+        return current.reduce(into: [:]) { result, entry in
+            result[entry.key] = existing[entry.key] ?? entry.value
+        }
+    }
+
+    private static func sortableModificationDate(
+        for item: BrowserFileItem,
+        stableDirectoryModificationDates: [String: Date]
+    ) -> Date? {
+        guard item.isDirectory else { return item.modificationDate }
+        return stableDirectoryModificationDates[item.id] ?? item.modificationDate
+    }
+
+    private static func compareDates(_ lhs: Date?, _ rhs: Date?) -> ComparisonResult {
+        switch (lhs, rhs) {
+        case (let lhs?, let rhs?):
+            if lhs == rhs { return .orderedSame }
+            return lhs < rhs ? .orderedAscending : .orderedDescending
+        case (nil, nil):
+            return .orderedSame
+        case (nil, _?):
+            return .orderedAscending
+        case (_?, nil):
+            return .orderedDescending
+        }
+    }
+}
+
 struct PaneVisibleRow: Identifiable, Equatable {
     let file: BrowserFileItem
     let depth: Int

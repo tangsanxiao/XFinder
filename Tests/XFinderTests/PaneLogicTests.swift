@@ -71,6 +71,39 @@ private func makeItems(_ names: [String], in root: URL) throws -> [BrowserFileIt
     #expect(PaneFilterLogic.filter(items, query: "zzz").isEmpty)
 }
 
+@Test func modifiedSortCanKeepExistingDirectoryOrderStableAcrossRefresh() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("XFinderStableSort-\(UUID().uuidString)", isDirectory: true)
+    let alpha = root.appendingPathComponent("Alpha", isDirectory: true)
+    let beta = root.appendingPathComponent("Beta", isDirectory: true)
+    try FileManager.default.createDirectory(at: alpha, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: beta, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let oldDate = Date(timeIntervalSince1970: 1_000)
+    let middleDate = Date(timeIntervalSince1970: 2_000)
+    let newDate = Date(timeIntervalSince1970: 3_000)
+    try FileManager.default.setAttributes([.modificationDate: middleDate], ofItemAtPath: alpha.path)
+    try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: beta.path)
+
+    let initialItems = try FileBrowserService.contents(of: root)
+    let stableDates = PaneFileSortLogic.directoryModificationDates(in: [initialItems])
+
+    try FileManager.default.setAttributes([.modificationDate: newDate], ofItemAtPath: beta.path)
+    let refreshedItems = try FileBrowserService.contents(of: root)
+
+    let liveOrder = PaneFileSortLogic.sort(refreshedItems, key: .modified, ascending: false).map(\.name)
+    let stableOrder = PaneFileSortLogic.sort(
+        refreshedItems,
+        key: .modified,
+        ascending: false,
+        stableDirectoryModificationDates: stableDates
+    ).map(\.name)
+
+    #expect(liveOrder == ["Beta", "Alpha"])
+    #expect(stableOrder == ["Alpha", "Beta"])
+}
+
 @Test func visibleRowsFlattenExpandedFoldersWithStableIDsAndOrdinals() throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("XFinderRows-\(UUID().uuidString)", isDirectory: true)

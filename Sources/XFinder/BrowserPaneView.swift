@@ -17,6 +17,7 @@ struct BrowserPane: View {
     @State private var items: [BrowserFileItem] = []
     @State private var expandedFolders: Set<String> = []
     @State private var expandedContents: [String: [BrowserFileItem]] = [:]
+    @State private var stableDirectoryModificationDates: [String: Date] = [:]
     @State private var selection: Set<BrowserFileItem.ID> = []
     @State private var selectionAnchor: BrowserFileItem.ID?
     @State private var renamingFileID: BrowserFileItem.ID?
@@ -226,6 +227,7 @@ struct BrowserPane: View {
             forwardStack.removeAll()
             expandedFolders.removeAll()
             expandedContents.removeAll()
+            stableDirectoryModificationDates.removeAll()
         }
         .onReceive(NotificationCenter.default.publisher(for: .xfinderPaneCommand)) { notification in
             guard let command = notification.object as? PaneCommand else { return }
@@ -273,13 +275,33 @@ struct BrowserPane: View {
                     },
                     commitRename: { commitRename(file) },
                     cancelRename: { cancelRename() },
+                    rename: {
+                        onFocus()
+                        beginRename(file)
+                    },
                     open: {
                         onFocus()
                         open(file)
                     },
+                    copyFiles: {
+                        onFocus()
+                        copyTargetsToPasteboard(of: file)
+                    },
+                    copyPath: {
+                        onFocus()
+                        copyPath(file.url.path)
+                    },
+                    reveal: {
+                        onFocus()
+                        NSWorkspace.shared.activateFileViewerSelecting([file.url])
+                    },
                     trash: {
                         onFocus()
                         trashTargets(of: file)
+                    },
+                    compress: {
+                        onFocus()
+                        compress(file)
                     },
                     duplicate: {
                         onFocus()
@@ -291,11 +313,14 @@ struct BrowserPane: View {
                     },
                     quickLook: {
                         onFocus()
-                        quickLook([file])
+                        quickLook(actionTargets(for: file))
                     },
                     canReadAloud: canReadAloud(file),
                     readAloud: { startReadAloud(file) },
                     canBrowseInline: canBrowseInline(file),
+                    destinations: destinations,
+                    copyTo: { destination in copyTargets(of: file, to: destination) },
+                    moveTo: { destination in moveTargets(of: file, to: destination) },
                     onBeginDrag: { beginDrag(file) },
                     dropInto: { providers in dropOnFolder(file.url, providers: providers) }
                 )
@@ -340,6 +365,10 @@ struct BrowserPane: View {
                                 },
                                 commitRename: { commitRename(row.file) },
                                 cancelRename: { cancelRename() },
+                                rename: {
+                                    onFocus()
+                                    beginRename(row.file)
+                                },
                                 open: {
                                     onFocus()
                                     open(row.file)
@@ -348,7 +377,14 @@ struct BrowserPane: View {
                                     onFocus()
                                     toggleExpansion(row.file)
                                 },
-                                copy: { copyPath(row.file.url.path) },
+                                copyFiles: {
+                                    onFocus()
+                                    copyTargetsToPasteboard(of: row.file)
+                                },
+                                copyPath: {
+                                    onFocus()
+                                    copyPath(row.file.url.path)
+                                },
                                 reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
                                 trash: { trashTargets(of: row.file) },
                                 compress: { compress(row.file) },
@@ -577,10 +613,9 @@ struct BrowserPane: View {
     private func selectAllVisibleItems() {
         let files = selectableFilesForCurrentView
         let state = PaneSelectionLogic.selectAll(ids: files.map(\.id))
-        cancelPendingRename()
+        clearRenameState()
         selection = state.selection
         selectionAnchor = state.anchor
-        renamingFileID = nil
         if let first = files.first {
             keyboardScrollTarget = liveViewMode == .list ? "\(first.id)-0" : first.id
         }
@@ -635,6 +670,14 @@ struct BrowserPane: View {
     /// Cmd+C — write the selected files' URLs to the pasteboard (Finder-compatible).
     private func copySelectionToPasteboard() {
         let urls = selectedVisibleFiles.map(\.url)
+        copyURLsToPasteboard(urls)
+    }
+
+    private func copyTargetsToPasteboard(of file: BrowserFileItem) {
+        copyURLsToPasteboard(actionTargets(for: file).map(\.url))
+    }
+
+    private func copyURLsToPasteboard(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects(urls as [NSURL])
@@ -1539,13 +1582,25 @@ struct BrowserPane: View {
                     },
                     commitRename: { commitRename(file) },
                     cancelRename: { cancelRename() },
+                    rename: {
+                        onFocus()
+                        beginRename(file)
+                    },
                     open: {
                         onFocus()
                         open(file)
                     },
-                    copy: { copyPath(file.url.path) },
+                    copyFiles: {
+                        onFocus()
+                        copyTargetsToPasteboard(of: file)
+                    },
+                    copyPath: {
+                        onFocus()
+                        copyPath(file.url.path)
+                    },
                     reveal: { NSWorkspace.shared.activateFileViewerSelecting([file.url]) },
                     trash: { trashTargets(of: file) },
+                    compress: { compress(file) },
                     duplicate: { duplicateTargets(of: file) },
                     getInfo: { showInfo(for: file.url) },
                     quickLook: { quickLook(actionTargets(for: file)) },
@@ -1586,8 +1641,8 @@ struct BrowserPane: View {
             items = loaded
             expandedFolders.removeAll()
             expandedContents.removeAll()
-            cancelPendingRename()
-            renamingFileID = nil
+            stableDirectoryModificationDates = PaneFileSortLogic.directoryModificationDates(in: [loaded])
+            clearRenameState()
             errorMessage = nil
             applyPostNavigationSelection()
             await refreshGitSnapshot(generation: generation)
@@ -1646,6 +1701,10 @@ struct BrowserPane: View {
             for (folderID, contents) in reloadedContents {
                 expandedContents[folderID] = contents
             }
+            stableDirectoryModificationDates = PaneFileSortLogic.mergedDirectoryModificationDates(
+                existing: stableDirectoryModificationDates,
+                groups: [loaded] + Array(reloadedContents.values)
+            )
             if let targetURL, selectLoadedFile(at: targetURL) != nil {
                 pendingSelectionURL = nil
             }
@@ -1682,40 +1741,16 @@ struct BrowserPane: View {
             order.ascending = key.defaultAscending
         }
         store.setPaneSortOrder(order, for: root.id)
+        stableDirectoryModificationDates = PaneFileSortLogic.directoryModificationDates(in: [loadedFiles])
     }
 
     private func sorted(_ source: [BrowserFileItem]) -> [BrowserFileItem] {
-        source.sorted { lhs, rhs in
-            let order: ComparisonResult
-            switch sortKey {
-            case .name:
-                order = lhs.name.localizedStandardCompare(rhs.name)
-            case .modified:
-                order = compareDates(lhs.modificationDate, rhs.modificationDate)
-            case .kind:
-                let kindOrder = lhs.typeDescription.localizedStandardCompare(rhs.typeDescription)
-                order = kindOrder == .orderedSame ? lhs.name.localizedStandardCompare(rhs.name) : kindOrder
-            }
-
-            if order == .orderedSame {
-                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-            }
-            return sortAscending ? order == .orderedAscending : order == .orderedDescending
-        }
-    }
-
-    private func compareDates(_ lhs: Date?, _ rhs: Date?) -> ComparisonResult {
-        switch (lhs, rhs) {
-        case (let lhs?, let rhs?):
-            if lhs == rhs { return .orderedSame }
-            return lhs < rhs ? .orderedAscending : .orderedDescending
-        case (nil, nil):
-            return .orderedSame
-        case (nil, _?):
-            return .orderedAscending
-        case (_?, nil):
-            return .orderedDescending
-        }
+        PaneFileSortLogic.sort(
+            source,
+            key: sortKey,
+            ascending: sortAscending,
+            stableDirectoryModificationDates: stableDirectoryModificationDates
+        )
     }
 
     private func toggleExpansion(_ file: BrowserFileItem) {
@@ -1730,6 +1765,10 @@ struct BrowserPane: View {
                 let children = try await FileBrowserService.contents(
                     of: file.url, includingHidden: showsHiddenItems)
                 expandedContents[file.id] = children
+                stableDirectoryModificationDates = PaneFileSortLogic.mergedDirectoryModificationDates(
+                    existing: stableDirectoryModificationDates,
+                    groups: [items, children]
+                )
                 expandedFolders.insert(file.id)
             } catch {
                 store.lastError = error.localizedDescription
@@ -1855,7 +1894,7 @@ struct BrowserPane: View {
     private func scheduleRename(_ file: BrowserFileItem) {
         cancelPendingRename()
         pendingRenameTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(520))
+            try? await Task.sleep(for: .milliseconds(1_150))
             guard !Task.isCancelled,
                 selection == [file.id],
                 isFocused,
@@ -1870,7 +1909,14 @@ struct BrowserPane: View {
         pendingRenameTask = nil
     }
 
+    private func clearRenameState() {
+        cancelPendingRename()
+        renamingFileID = nil
+        renameDraft = ""
+    }
+
     private func beginRename(_ file: BrowserFileItem) {
+        cancelPendingRename()
         selection = [file.id]
         selectionAnchor = file.id
         renameDraft = file.name
@@ -1942,16 +1988,13 @@ struct BrowserPane: View {
     }
 
     private func commitRename(_ file: BrowserFileItem) {
-        cancelPendingRename()
         store.renameFile(file.url, to: renameDraft)
-        renamingFileID = nil
+        clearRenameState()
         scheduleReload()
     }
 
     private func cancelRename() {
-        cancelPendingRename()
-        renamingFileID = nil
-        renameDraft = ""
+        clearRenameState()
     }
 
     /// Records the whole selection (or just `file` when it isn't selected) as
@@ -2029,7 +2072,7 @@ struct BrowserPane: View {
     }
 
     private func open(_ file: BrowserFileItem) {
-        cancelPendingRename()
+        clearRenameState()
         if canBrowseInline(file) {
             navigate(to: file.url)
         } else if MarkdownFileService.isMarkdownURL(file.url) {
@@ -2042,7 +2085,7 @@ struct BrowserPane: View {
     private func navigate(to url: URL) {
         onFocus()
         guard url != currentURL else { return }
-        cancelPendingRename()
+        clearRenameState()
         backStack.append(currentURL)
         forwardStack.removeAll()
         currentURL = url

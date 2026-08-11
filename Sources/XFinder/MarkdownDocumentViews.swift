@@ -17,6 +17,9 @@ struct MarkdownDocumentView: View {
     @StateObject private var document: MarkdownDocumentController
     @State private var mode = MarkdownViewMode.preview
     @State private var showsReloadConfirmation = false
+    @State private var showsSearch = false
+    @State private var pendingSibling: MarkdownSiblingFile?
+    @State private var didCopyRichText = false
 
     init(url: URL) {
         _document = StateObject(wrappedValue: MarkdownDocumentController(url: url))
@@ -46,6 +49,9 @@ struct MarkdownDocumentView: View {
                 }
             }
             await document.load()
+        }
+        .task(id: document.url) {
+            await watchOpenedDocument(at: document.url)
         }
         .onDisappear {
             Task { _ = await document.save() }
@@ -79,24 +85,33 @@ struct MarkdownDocumentView: View {
                 document.reloadDiscardingChanges()
             }
         }
+        .confirmationDialog(
+            store.loc("切换文档前处理当前修改", "Handle edits before switching documents"),
+            isPresented: pendingSiblingBinding
+        ) {
+            Button(store.loc("保存并切换", "Save and Switch")) {
+                guard let pendingSibling else { return }
+                Task {
+                    guard await document.save() else { return }
+                    _ = await document.openSibling(pendingSibling)
+                    self.pendingSibling = nil
+                }
+            }
+            Button(store.loc("丢弃并切换", "Discard and Switch"), role: .destructive) {
+                guard let pendingSibling else { return }
+                Task {
+                    _ = await document.openSibling(pendingSibling, discardingChanges: true)
+                    self.pendingSibling = nil
+                }
+            }
+            Button(store.loc("取消", "Cancel"), role: .cancel) {
+                pendingSibling = nil
+            }
+        }
     }
 
     @ToolbarContentBuilder
     private var documentToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(document.url.lastPathComponent)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-                Text(document.url.deletingLastPathComponent().path)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .frame(maxWidth: 260, alignment: .leading)
-        }
-
         ToolbarItem(placement: .principal) {
             if document.isEditable {
                 Picker(store.loc("显示模式", "View mode"), selection: $mode) {
@@ -114,6 +129,14 @@ struct MarkdownDocumentView: View {
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                showsSearch.toggle()
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .help(store.loc("搜索文档", "Search document"))
+            .keyboardShortcut("f", modifiers: .command)
+
             Button {
                 Task { _ = await document.save() }
             } label: {
@@ -135,14 +158,47 @@ struct MarkdownDocumentView: View {
             .help(store.loc("重新载入", "Reload"))
 
             Button {
-                Task {
-                    guard await document.save() else { return }
-                    speechController.start(url: document.url, kind: .markdown)
+                toggleReadAloud()
+            } label: {
+                Image(systemName: speechController.isReading(document.url) ? "stop.fill" : "speaker.wave.2")
+            }
+            .foregroundStyle(speechController.isReading(document.url) ? Color.accentColor : Color.primary)
+            .help(
+                speechController.isReading(document.url)
+                    ? store.loc("停止朗读", "Stop reading")
+                    : store.loc("朗读文档", "Read document aloud")
+            )
+
+            Button {
+                copyRichText()
+            } label: {
+                Image(systemName: didCopyRichText ? "checkmark.circle.fill" : "doc.on.clipboard")
+            }
+            .foregroundStyle(didCopyRichText ? Color.accentColor : Color.primary)
+            .help(store.loc("复制为富文本，可粘贴到邮件或文档", "Copy as rich text for email or documents"))
+
+            Menu {
+                Button(store.loc("插入 Markdown 语法速查", "Insert Markdown Syntax Cheatsheet")) {
+                    document.insertCheatsheet()
+                    mode = .edit
+                    store.statusMessage = store.loc("已插入 Markdown 速查", "Inserted Markdown cheatsheet")
+                }
+                Divider()
+                ForEach(MarkdownTemplate.allCases) { template in
+                    Button(templateTitle(template)) {
+                        document.insertTemplate(template)
+                        mode = .edit
+                        store.statusMessage = insertedTemplateMessage(template)
+                    }
+                }
+                Divider()
+                Button(store.loc("导出 PDF…", "Export PDF…")) {
+                    exportPDF()
                 }
             } label: {
-                Image(systemName: "speaker.wave.2")
+                Image(systemName: "ellipsis.circle")
             }
-            .help(store.loc("朗读文档", "Read document aloud"))
+            .help(store.loc("插入模板、速查或导出 PDF", "Insert templates, cheatsheet, or export PDF"))
 
             Button {
                 NSWorkspace.shared.open(document.url)
@@ -155,19 +211,20 @@ struct MarkdownDocumentView: View {
 
     private var documentSurface: some View {
         VStack(spacing: 0) {
+            if showsSearch {
+                searchBar
+            }
+
             Group {
-                switch mode {
-                case .preview:
-                    MarkdownPreviewView(document: document.rendered, sourceURL: document.url)
-                case .edit:
-                    MarkdownEditorView(source: sourceBinding)
-                case .split:
+                if document.siblings.count > 1 {
                     HSplitView {
-                        MarkdownEditorView(source: sourceBinding)
-                            .frame(minWidth: 300)
-                        MarkdownPreviewView(document: document.rendered, sourceURL: document.url)
-                            .frame(minWidth: 340)
+                        siblingSidebar
+                            .frame(minWidth: 150, idealWidth: 190, maxWidth: 240)
+                        documentBody
+                            .frame(minWidth: 560)
                     }
+                } else {
+                    documentBody
                 }
             }
 
@@ -185,6 +242,10 @@ struct MarkdownDocumentView: View {
                 Text(store.loc(statusTextChinese, document.statusText))
                     .lineLimit(1)
                 Spacer()
+                if case .active = document.agentActivity {
+                    Label(store.loc("外部更新", "External update"), systemImage: "bolt.horizontal.circle.fill")
+                        .foregroundStyle(Color.accentColor)
+                }
                 Text("\(document.source.count.formatted()) \(store.loc("字符", "characters"))")
             }
             .font(.caption)
@@ -196,14 +257,107 @@ struct MarkdownDocumentView: View {
         .background(Color(nsColor: .textBackgroundColor))
     }
 
+    @ViewBuilder
+    private var documentBody: some View {
+        switch mode {
+        case .preview:
+            MarkdownPreviewView(
+                document: document.rendered,
+                sourceURL: document.url,
+                searchQuery: document.searchQuery,
+                highlightedBlockIDs: document.highlightedBlockIDs,
+                onToggleTask: { document.toggleTask(ordinal: $0) }
+            )
+        case .edit:
+            MarkdownEditorView(source: sourceBinding)
+        case .split:
+            HSplitView {
+                MarkdownEditorView(source: sourceBinding)
+                    .frame(minWidth: 300)
+                MarkdownPreviewView(
+                    document: document.rendered,
+                    sourceURL: document.url,
+                    searchQuery: document.searchQuery,
+                    highlightedBlockIDs: document.highlightedBlockIDs,
+                    onToggleTask: { document.toggleTask(ordinal: $0) }
+                )
+                .frame(minWidth: 340)
+            }
+        }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(store.loc("搜索当前 Markdown", "Search current Markdown"), text: searchBinding)
+                .textFieldStyle(.plain)
+            Text("\(document.searchMatchCount)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(minWidth: 30, alignment: .trailing)
+            Button {
+                document.updateSearchQuery("")
+                showsSearch = false
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(store.loc("关闭搜索", "Close search"))
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(height: 1)
+        }
+    }
+
+    private var siblingSidebar: some View {
+        List(document.siblings) { sibling in
+            Button {
+                openSibling(sibling)
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: sibling.url == document.url ? "doc.text.fill" : "doc.text")
+                        .foregroundStyle(sibling.url == document.url ? Color.accentColor : Color.secondary)
+                    Text(sibling.name)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowBackground(sibling.url == document.url ? Color.accentColor.opacity(0.12) : Color.clear)
+        }
+        .listStyle(.sidebar)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
     private var sourceBinding: Binding<String> {
         Binding(get: { document.source }, set: { document.updateSource($0) })
+    }
+
+    private var searchBinding: Binding<String> {
+        Binding(get: { document.searchQuery }, set: { document.updateSearchQuery($0) })
     }
 
     private var conflictBinding: Binding<Bool> {
         Binding(
             get: { document.hasExternalConflict },
             set: { if !$0 { document.cancelConflictPrompt() } }
+        )
+    }
+
+    private var pendingSiblingBinding: Binding<Bool> {
+        Binding(
+            get: { pendingSibling != nil },
+            set: { if !$0 { pendingSibling = nil } }
         )
     }
 
@@ -217,6 +371,80 @@ struct MarkdownDocumentView: View {
         case "Save failed": return "保存失败"
         case "Read-only · file exceeds the editing limit": return "只读 · 文件超过编辑上限"
         default: return document.statusText
+        }
+    }
+
+    private func openSibling(_ sibling: MarkdownSiblingFile) {
+        if document.isDirty {
+            pendingSibling = sibling
+        } else {
+            Task { _ = await document.openSibling(sibling) }
+        }
+    }
+
+    private func toggleReadAloud() {
+        if speechController.isReading(document.url) {
+            speechController.stop()
+        } else {
+            Task {
+                guard await document.save() else { return }
+                speechController.start(url: document.url, kind: .markdown)
+            }
+        }
+    }
+
+    private func copyRichText() {
+        if document.copyRichTextToPasteboard() {
+            didCopyRichText = true
+            store.statusMessage = store.loc("已复制 Markdown 富文本", "Copied Markdown rich text")
+            Task {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                didCopyRichText = false
+            }
+        } else {
+            store.lastError = store.loc("复制 Markdown 富文本失败", "Copy Markdown rich text failed")
+        }
+    }
+
+    private func templateTitle(_ template: MarkdownTemplate) -> String {
+        switch template {
+        case .note: return store.loc("插入笔记模板", "Insert Note Template")
+        case .meeting: return store.loc("插入会议模板", "Insert Meeting Template")
+        case .research: return store.loc("插入研究模板", "Insert Research Template")
+        }
+    }
+
+    private func insertedTemplateMessage(_ template: MarkdownTemplate) -> String {
+        switch template {
+        case .note: return store.loc("已插入笔记模板", "Inserted note template")
+        case .meeting: return store.loc("已插入会议模板", "Inserted meeting template")
+        case .research: return store.loc("已插入研究模板", "Inserted research template")
+        }
+    }
+
+    private func exportPDF() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = document.url.deletingPathExtension().lastPathComponent + ".pdf"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try document.exportPDF(to: url)
+        } catch {
+            store.lastError = store.loc(
+                "导出 PDF 失败：\(error.localizedDescription)",
+                "Export PDF failed: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func watchOpenedDocument(at url: URL) async {
+        let directory = url.deletingLastPathComponent()
+        for await _ in DirectoryWatcher.changes(of: directory) {
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            await document.handleExternalChange()
         }
     }
 
@@ -261,6 +489,9 @@ private struct MarkdownPreviewView: View {
     @EnvironmentObject private var store: WorkspaceStore
     let document: MarkdownRenderDocument
     let sourceURL: URL
+    let searchQuery: String
+    let highlightedBlockIDs: Set<Int>
+    let onToggleTask: (Int) -> Void
 
     var body: some View {
         ScrollView {
@@ -276,7 +507,13 @@ private struct MarkdownPreviewView: View {
                 }
 
                 ForEach(document.blocks) { block in
-                    MarkdownBlockView(block: block, sourceURL: sourceURL)
+                    MarkdownBlockView(
+                        block: block,
+                        sourceURL: sourceURL,
+                        searchQuery: searchQuery,
+                        highlightedBlockIDs: highlightedBlockIDs,
+                        onToggleTask: onToggleTask
+                    )
                 }
 
                 if document.blocks.isEmpty {
@@ -298,9 +535,21 @@ private struct MarkdownPreviewView: View {
 private struct MarkdownBlockView: View {
     let block: MarkdownBlockModel
     let sourceURL: URL
+    let searchQuery: String
+    let highlightedBlockIDs: Set<Int>
+    let onToggleTask: (Int) -> Void
 
     @ViewBuilder
     var body: some View {
+        blockContent
+            .padding(.horizontal, 4)
+            .padding(.vertical, 3)
+            .background(blockHighlight)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+    }
+
+    @ViewBuilder
+    private var blockContent: some View {
         switch block.kind {
         case .heading(let level, let runs):
             MarkdownInlineText(runs: runs, sourceURL: sourceURL)
@@ -319,7 +568,13 @@ private struct MarkdownBlockView: View {
                     .frame(width: 3)
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(blocks) { nested in
-                        MarkdownBlockView(block: nested, sourceURL: sourceURL)
+                        MarkdownBlockView(
+                            block: nested,
+                            sourceURL: sourceURL,
+                            searchQuery: searchQuery,
+                            highlightedBlockIDs: highlightedBlockIDs,
+                            onToggleTask: onToggleTask
+                        )
                     }
                 }
                 .foregroundStyle(.secondary)
@@ -341,9 +596,23 @@ private struct MarkdownBlockView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             }
         case .unorderedList(let items):
-            MarkdownListView(items: items, start: nil, sourceURL: sourceURL)
+            MarkdownListView(
+                items: items,
+                start: nil,
+                sourceURL: sourceURL,
+                searchQuery: searchQuery,
+                highlightedBlockIDs: highlightedBlockIDs,
+                onToggleTask: onToggleTask
+            )
         case .orderedList(let start, let items):
-            MarkdownListView(items: items, start: start, sourceURL: sourceURL)
+            MarkdownListView(
+                items: items,
+                start: start,
+                sourceURL: sourceURL,
+                searchQuery: searchQuery,
+                highlightedBlockIDs: highlightedBlockIDs,
+                onToggleTask: onToggleTask
+            )
         case .thematicBreak:
             Divider()
                 .padding(.vertical, 6)
@@ -352,6 +621,26 @@ private struct MarkdownBlockView: View {
         case .image(let image):
             MarkdownLocalImageView(model: image, sourceURL: sourceURL)
         }
+    }
+
+    @ViewBuilder
+    private var blockHighlight: some View {
+        if highlightedBlockIDs.contains(block.id) {
+            Color.accentColor.opacity(0.12)
+        } else if blockMatchesSearch {
+            Color.yellow.opacity(0.16)
+        } else {
+            Color.clear
+        }
+    }
+
+    private var blockMatchesSearch: Bool {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return false }
+        return MarkdownDiffLogic.blockText(block).range(
+            of: query,
+            options: [.caseInsensitive, .diacriticInsensitive]
+        ) != nil
     }
 
     private func headingFont(_ level: Int) -> Font {
@@ -383,6 +672,9 @@ private struct MarkdownInlineText: View {
         {
             attributed.link = url
         }
+        if run.styles.contains(.highlight) {
+            attributed.backgroundColor = Color.yellow.opacity(0.35)
+        }
         var text = Text(attributed)
         if run.styles.contains(.strong) { text = text.bold() }
         if run.styles.contains(.emphasis) { text = text.italic() }
@@ -398,6 +690,9 @@ private struct MarkdownListView: View {
     let items: [MarkdownListItemModel]
     let start: Int?
     let sourceURL: URL
+    let searchQuery: String
+    let highlightedBlockIDs: Set<Int>
+    let onToggleTask: (Int) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -407,7 +702,13 @@ private struct MarkdownListView: View {
                         .frame(width: 22, alignment: .trailing)
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(items[index].blocks) { block in
-                            MarkdownBlockView(block: block, sourceURL: sourceURL)
+                            MarkdownBlockView(
+                                block: block,
+                                sourceURL: sourceURL,
+                                searchQuery: searchQuery,
+                                highlightedBlockIDs: highlightedBlockIDs,
+                                onToggleTask: onToggleTask
+                            )
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -420,8 +721,16 @@ private struct MarkdownListView: View {
     @ViewBuilder
     private func marker(for item: MarkdownListItemModel, index: Int) -> some View {
         if let checked = item.checkbox {
-            Image(systemName: checked ? "checkmark.square.fill" : "square")
-                .foregroundStyle(checked ? Color.accentColor : Color.secondary)
+            Button {
+                if let ordinal = item.taskOrdinal {
+                    onToggleTask(ordinal)
+                }
+            } label: {
+                Image(systemName: checked ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(checked ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(item.taskOrdinal == nil)
         } else if let start {
             Text("\(start + index).")
                 .font(.system(size: 14, weight: .medium, design: .rounded))

@@ -6,6 +6,7 @@ struct MarkdownDocumentLimits: Equatable, Sendable {
     var maximumEditableBytes = 1 * 1_024 * 1_024
     var maximumPreviewCharacters = 250_000
     var maximumBlocks = 2_000
+    var maximumSiblingFiles = 300
     var maximumTableRows = 200
     var maximumNestingDepth = 12
 
@@ -23,6 +24,13 @@ struct MarkdownFileSnapshot: Equatable, Sendable {
     let source: String
     let signature: MarkdownFileSignature
     let isEditable: Bool
+}
+
+struct MarkdownSiblingFile: Identifiable, Equatable, Sendable {
+    let url: URL
+    let name: String
+
+    var id: String { url.standardizedFileURL.path }
 }
 
 enum MarkdownDocumentError: Error, Equatable, LocalizedError {
@@ -49,8 +57,10 @@ enum MarkdownDocumentError: Error, Equatable, LocalizedError {
 }
 
 enum MarkdownFileService {
+    static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd"]
+
     static func isMarkdownURL(_ url: URL) -> Bool {
-        ["md", "markdown"].contains(url.pathExtension.lowercased())
+        markdownExtensions.contains(url.pathExtension.lowercased())
     }
 
     static func load(
@@ -123,6 +133,39 @@ enum MarkdownFileService {
         )
     }
 
+    static func siblingFiles(
+        for url: URL,
+        limits: MarkdownDocumentLimits = .standard
+    ) async -> [MarkdownSiblingFile] {
+        await Task.detached(priority: .utility) {
+            siblingFilesSynchronously(for: url, limits: limits)
+        }.value
+    }
+
+    static func siblingFilesSynchronously(
+        for url: URL,
+        limits: MarkdownDocumentLimits = .standard
+    ) -> [MarkdownSiblingFile] {
+        let directory = url.deletingLastPathComponent()
+        guard
+            let urls = try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.isRegularFileKey, .isHiddenKey],
+                options: []
+            )
+        else { return [] }
+
+        return urls.compactMap { itemURL in
+            guard isMarkdownURL(itemURL) else { return nil }
+            let values = try? itemURL.resourceValues(forKeys: [.isRegularFileKey, .isHiddenKey])
+            guard values?.isRegularFile == true, values?.isHidden != true else { return nil }
+            return MarkdownSiblingFile(url: itemURL.standardizedFileURL, name: itemURL.lastPathComponent)
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        .prefix(limits.maximumSiblingFiles)
+        .map { $0 }
+    }
+
     private static func diskFileMatches(
         _ url: URL,
         expectedSignature: MarkdownFileSignature
@@ -147,7 +190,8 @@ enum MarkdownFileService {
     private static func readBoundedData(from url: URL, maximumBytes: Int) throws -> Data {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
-        guard let data = try handle.read(upToCount: maximumBytes + 1), data.count <= maximumBytes else {
+        let data = try handle.read(upToCount: maximumBytes + 1) ?? Data()
+        guard data.count <= maximumBytes else {
             throw MarkdownDocumentError.fileTooLarge(maximumBytes: maximumBytes)
         }
         return data
@@ -167,6 +211,7 @@ struct MarkdownInlineStyles: OptionSet, Equatable, Sendable {
     static let strong = MarkdownInlineStyles(rawValue: 1 << 1)
     static let code = MarkdownInlineStyles(rawValue: 1 << 2)
     static let strikethrough = MarkdownInlineStyles(rawValue: 1 << 3)
+    static let highlight = MarkdownInlineStyles(rawValue: 1 << 4)
 }
 
 struct MarkdownInlineRun: Equatable, Sendable {
@@ -177,6 +222,7 @@ struct MarkdownInlineRun: Equatable, Sendable {
 
 struct MarkdownListItemModel: Equatable, Sendable {
     let checkbox: Bool?
+    let taskOrdinal: Int?
     let blocks: [MarkdownBlockModel]
 }
 
@@ -220,11 +266,173 @@ struct MarkdownRenderDocument: Equatable, Sendable {
     let wasTruncated: Bool
 }
 
+enum MarkdownSearchLogic {
+    static func matchCount(in source: String, query: String) -> Int {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuery.isEmpty else { return 0 }
+        let lowerSource = source.lowercased()
+        let lowerQuery = normalizedQuery.lowercased()
+        var count = 0
+        var searchStart = lowerSource.startIndex
+        while let range = lowerSource.range(of: lowerQuery, range: searchStart..<lowerSource.endIndex) {
+            count += 1
+            searchStart = lowerSource.index(after: range.lowerBound)
+        }
+        return count
+    }
+}
+
+enum MarkdownTaskListLogic {
+    static func toggleTask(ordinal targetOrdinal: Int, in source: String) -> String? {
+        var ordinal = 0
+        var lines = source.components(separatedBy: "\n")
+        for index in lines.indices {
+            guard let markerRange = taskMarkerRange(in: lines[index]) else { continue }
+            if ordinal == targetOrdinal {
+                let current = lines[index][markerRange]
+                lines[index].replaceSubrange(markerRange, with: current.lowercased() == "x" ? " " : "x")
+                return lines.joined(separator: "\n")
+            }
+            ordinal += 1
+        }
+        return nil
+    }
+
+    private static func taskMarkerRange(in line: String) -> Range<String.Index>? {
+        guard let open = line.range(of: "[")?.upperBound else { return nil }
+        guard open < line.endIndex else { return nil }
+        let close = line.index(after: open)
+        guard close < line.endIndex, line[close] == "]" else { return nil }
+        let marker = line[open]
+        guard marker == " " || marker == "x" || marker == "X" else { return nil }
+        let prefix = line[..<line.index(before: open)]
+        guard prefix.range(of: #"^\s*(?:[-*+]|\d+\.)\s+$"#, options: .regularExpression) != nil else {
+            return nil
+        }
+        return open..<close
+    }
+}
+
+enum MarkdownDiffLogic {
+    static func changedBlockIDs(previous: MarkdownRenderDocument, current: MarkdownRenderDocument) -> Set<Int> {
+        let previousTexts = previous.blocks.map(blockText)
+        var changed: Set<Int> = []
+        for (index, block) in current.blocks.enumerated() {
+            guard previousTexts.indices.contains(index), previousTexts[index] == blockText(block) else {
+                changed.insert(block.id)
+                continue
+            }
+        }
+        return changed
+    }
+
+    static func blockText(_ block: MarkdownBlockModel) -> String {
+        switch block.kind {
+        case .heading(_, let runs), .paragraph(let runs):
+            return runs.map(\.text).joined()
+        case .blockQuote(let blocks):
+            return blocks.map(blockText).joined(separator: "\n")
+        case .code(_, let text):
+            return text
+        case .unorderedList(let items):
+            return items.map(listItemText).joined(separator: "\n")
+        case .orderedList(_, let items):
+            return items.map(listItemText).joined(separator: "\n")
+        case .thematicBreak:
+            return "---"
+        case .table(let table):
+            return ([table.header] + table.rows).map { row in
+                row.map { $0.map(\.text).joined() }.joined(separator: "\t")
+            }.joined(separator: "\n")
+        case .image(let image):
+            return [image.altText, image.source, image.title ?? ""].joined(separator: " ")
+        }
+    }
+
+    private static func listItemText(_ item: MarkdownListItemModel) -> String {
+        let checkbox = item.checkbox.map { $0 ? "[x]" : "[ ]" } ?? ""
+        return checkbox + item.blocks.map(blockText).joined(separator: "\n")
+    }
+}
+
+enum MarkdownExportLogic {
+    static func plainText(from document: MarkdownRenderDocument) -> String {
+        document.blocks.map(MarkdownDiffLogic.blockText).joined(separator: "\n\n")
+    }
+
+    static func html(from document: MarkdownRenderDocument) -> String {
+        document.blocks.map(htmlBlock).joined(separator: "\n")
+    }
+
+    private static func htmlBlock(_ block: MarkdownBlockModel) -> String {
+        switch block.kind {
+        case .heading(let level, let runs):
+            return "<h\(level)>\(htmlRuns(runs))</h\(level)>"
+        case .paragraph(let runs):
+            return "<p>\(htmlRuns(runs))</p>"
+        case .blockQuote(let blocks):
+            return "<blockquote>\(blocks.map(htmlBlock).joined())</blockquote>"
+        case .code(let language, let text):
+            let escaped = escapeHTML(text)
+            let className = language.map { #" class="language-\#(escapeHTML($0))""# } ?? ""
+            return "<pre><code\(className)>\(escaped)</code></pre>"
+        case .unorderedList(let items):
+            return "<ul>\(items.map(htmlListItem).joined())</ul>"
+        case .orderedList(let start, let items):
+            return #"<ol start="\#(start)">\#(items.map(htmlListItem).joined())</ol>"#
+        case .thematicBreak:
+            return "<hr>"
+        case .table(let table):
+            let header = "<tr>" + table.header.map { "<th>\(htmlRuns($0))</th>" }.joined() + "</tr>"
+            let rows = table.rows.map { row in
+                "<tr>" + row.map { "<td>\(htmlRuns($0))</td>" }.joined() + "</tr>"
+            }.joined()
+            return "<table><thead>\(header)</thead><tbody>\(rows)</tbody></table>"
+        case .image(let image):
+            return #"<img src="\#(escapeHTML(image.source))" alt="\#(escapeHTML(image.altText))">"#
+        }
+    }
+
+    private static func htmlListItem(_ item: MarkdownListItemModel) -> String {
+        let checkbox =
+            item.checkbox.map {
+                $0 ? #" <input type="checkbox" checked disabled>"# : #" <input type="checkbox" disabled>"#
+            } ?? ""
+        return "<li>\(checkbox)\(item.blocks.map(htmlBlock).joined())</li>"
+    }
+
+    private static func htmlRuns(_ runs: [MarkdownInlineRun]) -> String {
+        runs.map { run in
+            var html = escapeHTML(run.text).replacingOccurrences(of: "\n", with: "<br>")
+            if run.styles.contains(.code) { html = "<code>\(html)</code>" }
+            if run.styles.contains(.highlight) { html = "<mark>\(html)</mark>" }
+            if run.styles.contains(.strikethrough) { html = "<del>\(html)</del>" }
+            if run.styles.contains(.emphasis) { html = "<em>\(html)</em>" }
+            if run.styles.contains(.strong) { html = "<strong>\(html)</strong>" }
+            if let destination = run.destination {
+                html = #"<a href="\#(escapeHTML(destination))">\#(html)</a>"#
+            }
+            return html
+        }.joined()
+    }
+
+    private static func escapeHTML(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+}
+
 enum MarkdownDocumentParsing {
     static func parse(
         _ source: String,
         limits: MarkdownDocumentLimits = .standard
     ) -> MarkdownRenderDocument {
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return MarkdownRenderDocument(blocks: [], wasTruncated: false)
+        }
         let wasCharacterLimited = source.count > limits.maximumPreviewCharacters
         let boundedSource = String(source.prefix(limits.maximumPreviewCharacters))
         let document = Document(parsing: boundedSource, options: [.disableSourcePosOpts])
@@ -239,6 +447,7 @@ private struct MarkdownRenderModelBuilder {
     private(set) var wasTruncated = false
     private var nextID = 0
     private var blockCount = 0
+    private var nextTaskOrdinal = 0
 
     init(limits: MarkdownDocumentLimits) {
         self.limits = limits
@@ -327,7 +536,15 @@ private struct MarkdownRenderModelBuilder {
             case .unchecked: checkbox = false
             case nil: checkbox = nil
             }
-            return MarkdownListItemModel(checkbox: checkbox, blocks: blocks(from: item, depth: depth))
+            let taskOrdinal: Int?
+            if checkbox == nil {
+                taskOrdinal = nil
+            } else {
+                taskOrdinal = nextTaskOrdinal
+                nextTaskOrdinal += 1
+            }
+            return MarkdownListItemModel(
+                checkbox: checkbox, taskOrdinal: taskOrdinal, blocks: blocks(from: item, depth: depth))
         }
     }
 
@@ -361,13 +578,13 @@ private struct MarkdownRenderModelBuilder {
         destination: String? = nil
     ) -> [MarkdownInlineRun] {
         if let text = markup as? Markdown.Text {
-            return [MarkdownInlineRun(text: text.string, styles: styles, destination: destination)]
+            return highlightedRuns(from: text.string, styles: styles, destination: destination)
         }
         if let code = markup as? InlineCode {
             return [MarkdownInlineRun(text: code.code, styles: styles.union(.code), destination: destination)]
         }
         if markup is SoftBreak {
-            return [MarkdownInlineRun(text: " ", styles: styles, destination: destination)]
+            return [MarkdownInlineRun(text: "\n", styles: styles, destination: destination)]
         }
         if markup is LineBreak {
             return [MarkdownInlineRun(text: "\n", styles: styles, destination: destination)]
@@ -401,5 +618,47 @@ private struct MarkdownRenderModelBuilder {
             }
         }
         return result
+    }
+
+    private func highlightedRuns(
+        from text: String,
+        styles: MarkdownInlineStyles,
+        destination: String?
+    ) -> [MarkdownInlineRun] {
+        var runs: [MarkdownInlineRun] = []
+        var remainder = text[...]
+        while let start = remainder.range(of: "==") {
+            if start.lowerBound > remainder.startIndex {
+                runs.append(
+                    MarkdownInlineRun(
+                        text: String(remainder[..<start.lowerBound]),
+                        styles: styles,
+                        destination: destination
+                    )
+                )
+            }
+            let afterStart = start.upperBound
+            guard let end = remainder[afterStart...].range(of: "==") else {
+                runs.append(
+                    MarkdownInlineRun(
+                        text: String(remainder[start.lowerBound...]), styles: styles, destination: destination))
+                return runs
+            }
+            let highlighted = remainder[afterStart..<end.lowerBound]
+            if !highlighted.isEmpty {
+                runs.append(
+                    MarkdownInlineRun(
+                        text: String(highlighted),
+                        styles: styles.union(.highlight),
+                        destination: destination
+                    )
+                )
+            }
+            remainder = remainder[end.upperBound...]
+        }
+        if !remainder.isEmpty {
+            runs.append(MarkdownInlineRun(text: String(remainder), styles: styles, destination: destination))
+        }
+        return runs
     }
 }

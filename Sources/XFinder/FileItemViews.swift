@@ -87,9 +87,11 @@ struct FileRow: View {
     let nameClick: () -> Void
     let commitRename: () -> Void
     let cancelRename: () -> Void
+    let rename: () -> Void
     let open: () -> Void
     let toggleExpansion: () -> Void
-    let copy: () -> Void
+    let copyFiles: () -> Void
+    let copyPath: () -> Void
     let reveal: () -> Void
     let trash: () -> Void
     let compress: () -> Void
@@ -190,28 +192,39 @@ struct FileRow: View {
             Button("Read Aloud") { readAloud() }
                 .disabled(!canReadAloud)
             Button("Get Info") { getInfo() }
-            Button("Reveal in Finder") { reveal() }
-            Button("Copy Path") { copy() }
-            Button("Duplicate") { duplicate() }
-            Button("Compress") { compress() }
-            if claudeEnabled {
-                Button("Ask Claude About Selection") { askClaude() }
-            }
-            Button("Move to Trash", role: .destructive) { trash() }
 
+            Divider()
+
+            Button("Copy") { copyFiles() }
+            Button("Copy Path") { copyPath() }
             if !destinations.isEmpty {
-                Divider()
                 Menu("Copy To") {
                     ForEach(destinations) { destination in
                         Button(destination.url.path) { copyTo(destination) }
                     }
                 }
+            }
+
+            Divider()
+
+            Button("Rename") { rename() }
+            Button("Duplicate") { duplicate() }
+            Button("Compress") { compress() }
+            if !destinations.isEmpty {
                 Menu("Move To") {
                     ForEach(destinations) { destination in
                         Button(destination.url.path) { moveTo(destination) }
                     }
                 }
             }
+            Button("Reveal in Finder") { reveal() }
+            if claudeEnabled {
+                Button("Ask Claude About Selection") { askClaude() }
+            }
+
+            Divider()
+
+            Button("Move to Trash", role: .destructive) { trash() }
         }
     }
 
@@ -290,14 +303,22 @@ struct IconFileCell: View {
     let nameClick: () -> Void
     let commitRename: () -> Void
     let cancelRename: () -> Void
+    let rename: () -> Void
     let open: () -> Void
+    let copyFiles: () -> Void
+    let copyPath: () -> Void
+    let reveal: () -> Void
     let trash: () -> Void
+    let compress: () -> Void
     let duplicate: () -> Void
     let getInfo: () -> Void
     let quickLook: () -> Void
     let canReadAloud: Bool
     let readAloud: () -> Void
     let canBrowseInline: Bool
+    let destinations: [PaneDestination]
+    let copyTo: (PaneDestination) -> Void
+    let moveTo: (PaneDestination) -> Void
     let onBeginDrag: () -> Void
     let dropInto: ([NSItemProvider]) -> Bool
     @FocusState private var isRenameFieldFocused: Bool
@@ -349,7 +370,35 @@ struct IconFileCell: View {
             Button("Read Aloud") { readAloud() }
                 .disabled(!canReadAloud)
             Button("Get Info") { getInfo() }
+
+            Divider()
+
+            Button("Copy") { copyFiles() }
+            Button("Copy Path") { copyPath() }
+            if !destinations.isEmpty {
+                Menu("Copy To") {
+                    ForEach(destinations) { destination in
+                        Button(destination.url.path) { copyTo(destination) }
+                    }
+                }
+            }
+
+            Divider()
+
+            Button("Rename") { rename() }
             Button("Duplicate") { duplicate() }
+            Button("Compress") { compress() }
+            if !destinations.isEmpty {
+                Menu("Move To") {
+                    ForEach(destinations) { destination in
+                        Button(destination.url.path) { moveTo(destination) }
+                    }
+                }
+            }
+            Button("Reveal in Finder") { reveal() }
+
+            Divider()
+
             Button("Move to Trash", role: .destructive) { trash() }
         }
     }
@@ -414,10 +463,13 @@ struct ColumnFileRow: View {
     let nameClick: () -> Void
     let commitRename: () -> Void
     let cancelRename: () -> Void
+    let rename: () -> Void
     let open: () -> Void
-    let copy: () -> Void
+    let copyFiles: () -> Void
+    let copyPath: () -> Void
     let reveal: () -> Void
     let trash: () -> Void
+    let compress: () -> Void
     let duplicate: () -> Void
     let getInfo: () -> Void
     let quickLook: () -> Void
@@ -483,24 +535,36 @@ struct ColumnFileRow: View {
             Button("Read Aloud") { readAloud() }
                 .disabled(!canReadAloud)
             Button("Get Info") { getInfo() }
-            Button("Reveal in Finder") { reveal() }
-            Button("Copy Path") { copy() }
-            Button("Duplicate") { duplicate() }
-            Button("Move to Trash", role: .destructive) { trash() }
 
+            Divider()
+
+            Button("Copy") { copyFiles() }
+            Button("Copy Path") { copyPath() }
             if !destinations.isEmpty {
-                Divider()
                 Menu("Copy To") {
                     ForEach(destinations) { destination in
                         Button(destination.url.path) { copyTo(destination) }
                     }
                 }
+            }
+
+            Divider()
+
+            Button("Rename") { rename() }
+            Button("Duplicate") { duplicate() }
+            Button("Compress") { compress() }
+            if !destinations.isEmpty {
                 Menu("Move To") {
                     ForEach(destinations) { destination in
                         Button(destination.url.path) { moveTo(destination) }
                     }
                 }
             }
+            Button("Reveal in Finder") { reveal() }
+
+            Divider()
+
+            Button("Move to Trash", role: .destructive) { trash() }
         }
     }
 
