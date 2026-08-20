@@ -16,9 +16,8 @@ struct SidebarView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(spacing: 2) {
-                        agentInboxEntry
+                        agentCenterEntry
                         skillHubEntry
-                        sessionCenterEntry
                     }
                     workspaceSection
                     starsSection
@@ -67,16 +66,16 @@ struct SidebarView: View {
         .frame(height: 36)
     }
 
-    /// Entry into the cross-agent Skill Hub. Highlighted when active; selecting
-    /// a workspace switches back to the file panes.
-    private var agentInboxEntry: some View {
-        let active = store.activePanel == .inbox
+    /// One entry for project-level review and the transcript catalog. The
+    /// selected Agent Center section is retained in settings.
+    private var agentCenterEntry: some View {
+        let active = store.activePanel == .agent
         return HStack(spacing: 8) {
             Image(systemName: "tray.full")
                 .font(.system(size: 12))
                 .frame(width: 16)
                 .foregroundStyle(active ? .blue : .secondary)
-            Text("Agent Inbox")
+            Text("Agent Center")
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
@@ -84,7 +83,7 @@ struct SidebarView: View {
         .frame(height: 30)
         .background(Rectangle().fill(active ? Color.accentColor.opacity(0.18) : Color.clear))
         .contentShape(Rectangle())
-        .onTapGesture { store.activePanel = .inbox }
+        .onTapGesture { store.activePanel = .agent }
     }
 
     private var skillHubEntry: some View {
@@ -104,25 +103,6 @@ struct SidebarView: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { store.activePanel = .skills }
-    }
-
-    /// Secondary entry into the full transcript catalog.
-    private var sessionCenterEntry: some View {
-        let active = store.activePanel == .sessions
-        return HStack(spacing: 8) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 12))
-                .frame(width: 16)
-                .foregroundStyle(active ? .blue : .secondary)
-            Text(store.loc("全部会话", "All Sessions"))
-                .lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 30)
-        .background(Rectangle().fill(active ? Color.accentColor.opacity(0.18) : Color.clear))
-        .contentShape(Rectangle())
-        .onTapGesture { store.activePanel = .sessions }
     }
 
     private var workspaceSection: some View {

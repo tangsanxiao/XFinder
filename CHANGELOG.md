@@ -4,6 +4,18 @@ Key user-visible changes to XFinder. Newest first.
 
 ## [Unreleased]
 
+### Added
+- Agent Center unifies Inbox and Sessions navigation, adds rendered Markdown session reading/copying, and supports direct project/session round trips.
+- File lists can now sort by Size and Kind as well as Name and Modified.
+
+### Changed
+- Agent Center shares a persistent session metadata catalog and samples oversized transcripts with hard performance limits.
+- Markdown sessions group consecutive fragments into IM-style turns, with user input on the right and assistant replies on the left.
+
+### Fixed
+- File double-click handling is reliable across list, icon, and column views, including video-heavy folders; external-open failures now appear in Activity & Errors.
+- Codex sessions use the same generated or renamed display titles shown by Codex instead of always using the first user message.
+
 ## [0.4.0] — Markdown Workflow and Finder Polish
 
 ### Added

@@ -87,6 +87,10 @@
   **要求**：可见行 flatten 逻辑必须放在 `PaneVisibleRowLogic` 这类纯逻辑里，行 id/序号在模型创建时固定；`ForEach` 直接遍历行模型，不要在 `body` 里 `Array(rows.enumerated())`；FSEvents / 文件操作触发的 reload 必须 debounce 合并。
   **原因**：SwiftUI 布局会频繁读取 `body`，在里面递归排序、复制行模型或为每个文件事件开 reload 任务，会把主线程耗在 `LazyVStack/ForEach` diff 和布局上。
 
+- **情况**：列表列头、`BrowserSortKey` 和 `PaneFileSortLogic` 分散维护,曾出现 Kind 有排序逻辑但列头不可点、Size 完全缺失。
+  **要求**：新增或调整列表列时必须同步检查排序枚举、默认方向、纯排序逻辑、可点击列头和升降序测试;排序只用已加载的 `BrowserFileItem` 元数据,不能临时读取文件。
+  **原因**：只补 UI 或只补逻辑都会形成表面存在但不可用的半成品;排序时追加 IO 会在大目录里阻塞交互。
+
 - **要求**：文件/文件夹图标用 `NSWorkspace.shared.icon(forFile:)`（真实系统图标），不要用 SF Symbol 近似；选中时图标不变色（只有文字和展开箭头变白）。
 
 - **情况**：需要在某个区域改变鼠标光标（列分隔线的 resize 等）。
@@ -122,13 +126,30 @@
 ## 跨 agent 中心(Skill / Session)
 
 - **要求**:扫描各 agent 目录的能力(Skill Center、Session Center)默认**只读**;解析按 agent 写独立适配器,且解析逻辑(frontmatter / JSONL 行 → 消息、token 估算)抽成纯函数放 `*Models`/`*Parsing` 并配单测,文件 IO 放 `*Scanner`。
-- **要求**:列表扫描必须**廉价**——会话文件可能很大(单机 ~400MB),列表只 stat + 头部读(`FileHandle.read(upToCount:)`),完整解析(transcript)在选中时惰性做;token 是估算(≈,字符/4 或字节/4),UI 要标注"≈"。
+- **要求**:列表扫描必须**廉价**——会话文件可能累计到数 GB,列表只 stat + 头部读(`FileHandle.read(upToCount:)`);选中后的 transcript 也必须用有界 head/tail、消息数和字符数上限,不能整文件读入内存;token 是估算(≈,字符/4 或字节/4),UI 要标注"≈"。
+- **情况**:Agent Inbox 和 Session Center 都依赖同一批可能达到数 GB 的 JSONL 会话文件。
+  **要求**:两个入口必须复用 `WorkspaceStore` 持有的 `SessionCatalog`;目录摘要缓存要跨视图、跨启动复用,刷新时只对路径/大小/mtime 变化的文件重读有界头部。禁止每次切换入口都重新读取全部文件,也禁止为缓存增加轮询。
+  **原因**:SwiftUI 切换顶层视图会销毁视图本地状态;各入口独立扫描会重复做数千次文件读取,造成明显等待和磁盘/CPU 压力。
+- **情况**:Codex 的界面标题来自本地 thread catalog,不一定等于 JSONL 第一条用户消息,且标题可独立更新。
+  **要求**:Codex 会话名优先使用只读 SQLite 中的 canonical display title,状态库标题次之,第一条真实用户消息仅作兜底;每次 catalog 扫描最多批量读一次标题库并构建内存映射,禁止逐文件查询或轮询;即使 JSONL 未变,刷新时也必须把新标题覆盖到摘要缓存。
+  **原因**:只读 JSONL 会让 XFinder 与 Codex 侧边栏名称不一致;把标题纳入文件 metadata 匹配又会导致重命名后继续复用陈旧缓存。
+- **情况**:Agent Inbox 与 Sessions 合并到同一个 Agent Center 导航入口。
+  **要求**:容器只能按当前 section 用 `switch` 实例化一个子页面,禁止用透明度或隐藏状态同时保活两页;项目↔会话跳转通过 store 的 requested id 深链,不能重新扫描寻找目标。
+  **原因**:同时实例化会让 Inbox 的 git 扫描与 Sessions 的目录/正文任务并发运行,抵消入口整合和共享缓存带来的性能收益。
 - **情况**:Agent Inbox 聚合项目列表时同时扫 git 与 session。
   **要求**:Inbox 入口必须复用 `WorkspaceStore` 缓存;列表扫描只做 session summary/git status/轻量风险规则,完整 transcript 抽取只能在选中项目后懒加载;隐藏/置顶这类用户治理状态要持久化并配纯逻辑测试。
   **原因**:曾经每次进入 Inbox 都全量扫描并解析多个完整 transcript,切换入口也会变慢;项目噪音无法治理会让主入口失去审查价值。
 - **要求**:`FileManager.DirectoryEnumerator` 的迭代在 async 上下文不可用,递归收集文件要放在**同步**辅助函数里再被 async 调用。
 - **情况**:第三方 LLM(会话总结)需要用户自填 API key。
   **要求**:默认关闭;key 存本机设置、只发往用户配置的 endpoint;请求构造(`makeRequest`)和响应解析(`parseContent`)写成纯函数配单测,网络调用单独一层。**绝不**把 key 发往其它地方或记日志。
+
+- **情况**:会话详情支持 Markdown 渲染和复制,原始消息可能很大并包含表格、代码或图片引用。
+  **要求**:Markdown 只在用户切换模式后对当前有界 transcript 后台解析,支持取消并限制消息/总字符/单 turn/block/表格;连续同角色消息要以单次 O(n) 聚合成一个 turn,用户气泡右对齐、Assistant 气泡左对齐;快速切换会话时必须取消旧 transcript 读取任务,大文本复制拼装也必须离开主线程并传播取消;图片一律转文字占位,禁止会话内容触发本地或远程图片 IO;模式切换不得重新扫描会话目录。
+  **原因**:无界解析会叠加 JSONL 读取和 Markdown AST 成本,图片引用还可能读取非预期路径,造成 CPU/内存峰值和隐私风险。
+
+- **情况**:文件行内部有文件名单击手势,行本身同时处理选择和双击打开。
+  **要求**:双击打开必须用行级 `highPriorityGesture` 统一处理,不能让子视图单击手势与双击并列竞争;列表、图标、分栏三种视图要同步修改和验证。
+  **原因**:子视图可能先消费点击序列,在视频较多、图标加载或视图更新频繁的目录中会表现为双击偶发不打开。
 
 ## 通用
 

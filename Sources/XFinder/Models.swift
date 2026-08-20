@@ -86,6 +86,13 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum AgentCenterSection: String, Codable, CaseIterable, Identifiable {
+    case inbox
+    case sessions
+
+    var id: String { rawValue }
+}
+
 struct AppSettings: Codable, Equatable {
     var claudeIntegrationEnabled = false
     /// Empty = resolve `claude` via the login shell's PATH. A custom path is
@@ -94,6 +101,7 @@ struct AppSettings: Codable, Equatable {
     /// When on, the top toolbar shows the Activity & Errors (trace) button.
     var debugModeEnabled = false
     var language: AppLanguage = .system
+    var agentCenterSection: AgentCenterSection = .inbox
     /// Canonical skill library directory; empty = default `~/Skills`. Skills
     /// consolidated here are symlinked into each agent (one source of truth).
     var skillLibraryPath = ""
@@ -108,6 +116,7 @@ struct AppSettings: Codable, Equatable {
         case claudeCLIPath
         case debugModeEnabled
         case language
+        case agentCenterSection
         case skillLibraryPath
         case summaryLLM
         case doubaoTTS
@@ -121,6 +130,8 @@ struct AppSettings: Codable, Equatable {
         claudeCLIPath = try container.decodeIfPresent(String.self, forKey: .claudeCLIPath) ?? ""
         debugModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .debugModeEnabled) ?? false
         language = try container.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
+        agentCenterSection =
+            try container.decodeIfPresent(AgentCenterSection.self, forKey: .agentCenterSection) ?? .inbox
         skillLibraryPath = try container.decodeIfPresent(String.self, forKey: .skillLibraryPath) ?? ""
         summaryLLM = try container.decodeIfPresent(SummaryLLMConfig.self, forKey: .summaryLLM) ?? SummaryLLMConfig()
         doubaoTTS = try container.decodeIfPresent(DoubaoTTSConfig.self, forKey: .doubaoTTS) ?? DoubaoTTSConfig()
@@ -206,11 +217,12 @@ enum FileCategory: String, CaseIterable, Identifiable {
 enum BrowserSortKey: String, Codable {
     case name
     case modified
+    case size
     case kind
 
     var defaultAscending: Bool {
         switch self {
-        case .name, .kind:
+        case .name, .size, .kind:
             return true
         case .modified:
             return false

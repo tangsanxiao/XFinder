@@ -165,8 +165,8 @@ struct FileRow: View {
             }
         }
         .contentShape(Rectangle())
+        .highPriorityGesture(TapGesture(count: 2).onEnded { open() })
         .simultaneousGesture(TapGesture().onEnded { select() })
-        .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
         .onDrag {
             onBeginDrag()
             return NSItemProvider(object: file.url as NSURL)
@@ -343,8 +343,8 @@ struct IconFileCell: View {
             }
         }
         .contentShape(Rectangle())
+        .highPriorityGesture(TapGesture(count: 2).onEnded { open() })
         .simultaneousGesture(TapGesture().onEnded { select() })
-        .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
         .onDrag {
             onBeginDrag()
             return NSItemProvider(object: file.url as NSURL)
@@ -508,8 +508,8 @@ struct ColumnFileRow: View {
             }
         }
         .contentShape(Rectangle())
+        .highPriorityGesture(TapGesture(count: 2).onEnded { open() })
         .simultaneousGesture(TapGesture().onEnded { select() })
-        .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
         .onDrag {
             onBeginDrag()
             return NSItemProvider(object: file.url as NSURL)

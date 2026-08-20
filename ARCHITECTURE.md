@@ -119,6 +119,13 @@ permissions, access flags). `QuickLookController` delegates to the system
   transcript extraction state, and local project governance preferences (hidden
   / pinned). Entering the Inbox reuses the cached snapshot; the refresh button
   is the explicit full rescan.
+- `SessionCatalog`, also owned by `WorkspaceStore`, is the shared metadata source
+  for Agent Inbox and Session Center. It coalesces concurrent scans and persists
+  path/size/mtime-keyed summaries; refreshes enumerate the roots but reread the
+  bounded JSONL head only for new or changed files. It has no polling loop.
+- The sidebar exposes one Agent Center entry. `AppSettings.agentCenterSection`
+  selects Inbox or Sessions, and `ContentView` instantiates only that section;
+  project/session deep links switch the section without keeping both scans alive.
 - `AgentRiskAnalyzer` is pure except for bounded text-file reads used to detect
   likely secrets in changed files. Keep new risk rules here and cover them with
   swift-testing tests; the UI should only render the findings.
@@ -141,7 +148,15 @@ permissions, access flags). `QuickLookController` delegates to the system
   `events` log (newest first) that the trace panel displays.
 - `SessionCenterView` lists local Claude/Codex transcripts and lazily builds a
   local full-text transcript index only when the user searches, keeping the
-  default list scan cheap for large session directories.
+  default list scan cheap for large session directories. Opening it reuses the
+  store-owned `SessionCatalog`, including a scan already performed by Agent Inbox.
+- `CodexThreadTitleCatalog` performs one bounded read-only SQLite pass per
+  catalog scan, preferring Codex's desktop display title and falling back to its
+  state title, then the existing JSONL first-message title.
+- Selected transcripts use a bounded head/tail reader with message and character
+  caps. Markdown mode groups consecutive same-role fragments into conversation
+  turns, then parses only the selected sampled transcript off-main,
+  applies a second set of block/character limits, and replaces images with text.
 
 ## Persistence
 
@@ -152,6 +167,8 @@ permissions, access flags). `QuickLookController` delegates to the system
   legacy `FinderHub` directory if present).
 - Agent Inbox hidden/pinned projects → `agent-inbox-preferences.json` in the
   same Application Support directory.
+- Session list metadata → `session-catalog.json` in the same directory; this is
+  a rebuildable local cache and never contains full transcript bodies.
 - `dist/`, `release/`, `.build/`, and `AI_CONTEXT.md` are gitignored.
 - Third-party license texts are tracked under `ThirdPartyLicenses/` and copied
   into packaged apps with `THIRD_PARTY_NOTICES.md`.

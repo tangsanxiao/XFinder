@@ -79,10 +79,12 @@ import Testing
     #expect(store.settings.claudeIntegrationEnabled == false)  // off by default
     store.settings.claudeIntegrationEnabled = true
     store.settings.claudeCLIPath = "/opt/homebrew/bin/claude"
+    store.settings.agentCenterSection = .sessions
 
     let relaunched = WorkspaceStore(supportDirectory: dir)
     #expect(relaunched.settings.claudeIntegrationEnabled)
     #expect(relaunched.settings.claudeCLIPath == "/opt/homebrew/bin/claude")
+    #expect(relaunched.settings.agentCenterSection == .sessions)
 }
 
 @Test func legacySettingsDecodeWithDoubaoDisabled() throws {
@@ -99,6 +101,7 @@ import Testing
 
     #expect(settings.claudeIntegrationEnabled)
     #expect(settings.language == .english)
+    #expect(settings.agentCenterSection == .inbox)
     #expect(!settings.doubaoTTS.enabled)
     #expect(settings.doubaoTTS.resourceID == "seed-tts-2.0")
 }

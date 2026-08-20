@@ -1,7 +1,7 @@
 import Foundation
 
 /// A code agent whose chat sessions are stored as JSONL transcripts on disk.
-enum SessionAgent: String, CaseIterable, Identifiable, Sendable {
+enum SessionAgent: String, CaseIterable, Codable, Identifiable, Sendable {
     case claude
     case codex
 
@@ -40,7 +40,7 @@ struct SessionMessage: Identifiable, Equatable, Sendable {
 }
 
 /// List-row metadata for a session (cheap to compute — head read + file stat).
-struct SessionSummary: Identifiable, Equatable, Sendable {
+struct SessionSummary: Codable, Identifiable, Equatable, Sendable {
     let agent: SessionAgent
     let url: URL
     let title: String
@@ -58,6 +58,22 @@ struct SessionSummary: Identifiable, Equatable, Sendable {
 struct SessionTranscript: Equatable, Sendable {
     let messages: [SessionMessage]
     let exactTokens: Int
+    let wasTruncated: Bool
+
+    init(messages: [SessionMessage], exactTokens: Int, wasTruncated: Bool = false) {
+        self.messages = messages
+        self.exactTokens = exactTokens
+        self.wasTruncated = wasTruncated
+    }
+}
+
+struct SessionTranscriptLimits: Equatable, Sendable {
+    var maximumReadBytes = 24 * 1_024 * 1_024
+    var leadingReadBytes = 8 * 1_024 * 1_024
+    var maximumMessages = 2_000
+    var maximumCharacters = 2_000_000
+
+    static let standard = SessionTranscriptLimits()
 }
 
 /// Pure transcript parsing — per-line extraction and estimation, split from

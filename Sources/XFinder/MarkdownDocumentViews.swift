@@ -532,7 +532,7 @@ private struct MarkdownPreviewView: View {
     }
 }
 
-private struct MarkdownBlockView: View {
+struct MarkdownBlockView: View {
     let block: MarkdownBlockModel
     let sourceURL: URL
     let searchQuery: String

@@ -49,7 +49,11 @@ struct AgentInboxView: View {
             content
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .task { await store.ensureAgentInboxLoaded() }
+        .task {
+            await store.ensureAgentInboxLoaded()
+            selectRequestedProject(store.agentInboxRequestedProjectID)
+        }
+        .onChange(of: store.agentInboxRequestedProjectID) { selectRequestedProject($0) }
         .task(id: extractionTaskID) {
             if let selected {
                 await store.loadAgentInboxExtractedItems(for: selected)
@@ -70,8 +74,9 @@ struct AgentInboxView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text("Agent Inbox")
+            Text("Agent Center")
                 .font(.system(size: 15, weight: .semibold))
+            AgentCenterSectionPicker()
             if !store.agentInboxProjects.isEmpty {
                 Text(loc("\(filtered.count) 个项目", "\(filtered.count) projects"))
                     .font(.system(size: 11, weight: .medium))
@@ -313,7 +318,21 @@ struct AgentInboxView: View {
 
     private func openSession(_ session: SessionSummary) {
         store.sessionCenterRequestedSessionID = session.id
-        store.activePanel = .sessions
+        store.settings.agentCenterSection = .sessions
+        store.activePanel = .agent
+    }
+
+    private func selectRequestedProject(_ projectID: AgentInboxProject.ID?) {
+        guard let projectID,
+            let project = store.agentInboxProjects.first(where: { $0.id == projectID })
+        else { return }
+        if store.isAgentInboxProjectHidden(project) {
+            store.agentInboxShowsHidden = true
+        }
+        selectedID = projectID
+        selectedProjectIDs = [projectID]
+        selectionAnchorID = projectID
+        store.agentInboxRequestedProjectID = nil
     }
 
     private func openChange(_ change: RecentChange) {

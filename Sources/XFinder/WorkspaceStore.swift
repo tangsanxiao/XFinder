@@ -53,7 +53,7 @@ final class WorkspaceStore: ObservableObject {
     /// Which top-level panel the content area shows.
     @Published var activePanel: ActivePanel = .files
 
-    enum ActivePanel { case files, skills, sessions, inbox }
+    enum ActivePanel { case files, skills, agent }
 
     @Published private(set) var agentInboxProjects: [AgentInboxProject] = []
     @Published private(set) var agentInboxIsRefreshing = false
@@ -67,6 +67,7 @@ final class WorkspaceStore: ObservableObject {
         }
     }
     @Published var sessionCenterRequestedSessionID: SessionSummary.ID?
+    @Published var agentInboxRequestedProjectID: AgentInboxProject.ID?
 
     /// Back-compat shim: the sidebar/Skill Center still read/write this.
     var showsSkillHub: Bool {
@@ -101,6 +102,7 @@ final class WorkspaceStore: ObservableObject {
     private let paneSortOrdersURL: URL
     private let settingsURL: URL
     private let agentInboxPreferencesURL: URL
+    let sessionCatalog: SessionCatalog
     private let finderController = FinderController()
     private var runningCompressionProcesses: [UUID: Process] = [:]
     private var undoStack: [FileHistoryEntry] = []
@@ -122,6 +124,7 @@ final class WorkspaceStore: ObservableObject {
         paneSortOrdersURL = directory.appendingPathComponent("pane-sort-orders.json")
         settingsURL = directory.appendingPathComponent("settings.json")
         agentInboxPreferencesURL = directory.appendingPathComponent("agent-inbox-preferences.json")
+        sessionCatalog = SessionCatalog(cacheURL: directory.appendingPathComponent("session-catalog.json"))
 
         if supportDirectory == nil {
             let legacyPersistenceURL =
@@ -222,7 +225,8 @@ final class WorkspaceStore: ObservableObject {
             ? [:]
             : Dictionary(uniqueKeysWithValues: agentInboxProjects.map { ($0.id, $0.extractedItems) })
 
-        var loaded = await AgentInboxScanner.scan(workspaces: workspaces, stars: stars)
+        let sessions = await sessionCatalog.sessions(force: force)
+        var loaded = await AgentInboxScanner.scan(workspaces: workspaces, stars: stars, sessions: sessions)
         for index in loaded.indices {
             if let items = existingExtractedItems[loaded[index].id] {
                 loaded[index].extractedItems = items

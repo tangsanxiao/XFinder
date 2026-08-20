@@ -26,10 +26,13 @@ struct ContentView: View {
             switch store.activePanel {
             case .skills:
                 SkillHubView(isSidebarVisible: isSidebarVisible)
-            case .sessions:
-                SessionCenterView(isSidebarVisible: isSidebarVisible)
-            case .inbox:
-                AgentInboxView(isSidebarVisible: isSidebarVisible)
+            case .agent:
+                switch store.settings.agentCenterSection {
+                case .inbox:
+                    AgentInboxView(isSidebarVisible: isSidebarVisible)
+                case .sessions:
+                    SessionCenterView(isSidebarVisible: isSidebarVisible)
+                }
             case .files:
                 WorkspaceDetailView(
                     focusedDirectoryID: focusedDirectoryID,

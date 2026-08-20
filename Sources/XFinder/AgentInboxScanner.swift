@@ -1,8 +1,11 @@
 import Foundation
 
 enum AgentInboxScanner {
-    static func scan(workspaces: [Workspace], stars: [StarItem]) async -> [AgentInboxProject] {
-        let sessions = await SessionScanner.scan(agents: [.claude, .codex])
+    static func scan(
+        workspaces: [Workspace],
+        stars: [StarItem],
+        sessions: [SessionSummary]
+    ) async -> [AgentInboxProject] {
         var projectURLsByPath: [String: URL] = [:]
 
         for session in sessions {

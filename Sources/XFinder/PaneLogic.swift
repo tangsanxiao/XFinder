@@ -39,6 +39,24 @@ enum PaneFilterLogic {
     }
 }
 
+enum PaneFileOpenRoute: Equatable {
+    case browse
+    case markdown
+    case externalApplication
+}
+
+enum PaneFileOpenLogic {
+    static func route(for file: BrowserFileItem, showHiddenItems: Bool) -> PaneFileOpenRoute {
+        if file.canBrowseInline(showHiddenItems: showHiddenItems) {
+            return .browse
+        }
+        if MarkdownFileService.isMarkdownURL(file.url) {
+            return .markdown
+        }
+        return .externalApplication
+    }
+}
+
 enum PaneFileSortLogic {
     static func sort(
         _ source: [BrowserFileItem],
@@ -58,6 +76,8 @@ enum PaneFileSortLogic {
                     sortableModificationDate(
                         for: rhs, stableDirectoryModificationDates: stableDirectoryModificationDates)
                 )
+            case .size:
+                order = compareSizes(lhs.size, rhs.size)
             case .kind:
                 let kindOrder = lhs.typeDescription.localizedStandardCompare(rhs.typeDescription)
                 order = kindOrder == .orderedSame ? lhs.name.localizedStandardCompare(rhs.name) : kindOrder
@@ -98,6 +118,20 @@ enum PaneFileSortLogic {
     }
 
     private static func compareDates(_ lhs: Date?, _ rhs: Date?) -> ComparisonResult {
+        switch (lhs, rhs) {
+        case (let lhs?, let rhs?):
+            if lhs == rhs { return .orderedSame }
+            return lhs < rhs ? .orderedAscending : .orderedDescending
+        case (nil, nil):
+            return .orderedSame
+        case (nil, _?):
+            return .orderedAscending
+        case (_?, nil):
+            return .orderedDescending
+        }
+    }
+
+    private static func compareSizes(_ lhs: Int64?, _ rhs: Int64?) -> ComparisonResult {
         switch (lhs, rhs) {
         case (let lhs?, let rhs?):
             if lhs == rhs { return .orderedSame }

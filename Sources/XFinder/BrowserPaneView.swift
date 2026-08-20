@@ -1370,13 +1370,25 @@ struct BrowserPane: View {
                         resizeColumn(.sizeKind, phase: phase, delta: delta, paneWidth: proxy.size.width)
                     }
                 ) {
-                    Text("Size")
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .padding(.trailing, 18)
+                    SortHeaderButton(
+                        title: "Size",
+                        key: .size,
+                        currentKey: sortKey,
+                        isAscending: sortAscending,
+                        action: { setSort(.size) }
+                    )
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 18)
                 }
 
-                Text("Kind")
-                    .frame(width: widths.kind, height: 32, alignment: .leading)
+                SortHeaderButton(
+                    title: "Kind",
+                    key: .kind,
+                    currentKey: sortKey,
+                    isAscending: sortAscending,
+                    action: { setSort(.kind) }
+                )
+                .frame(width: widths.kind, height: 32, alignment: .leading)
             }
             .frame(width: proxy.size.width, height: 32, alignment: .leading)
             .clipped()
@@ -2073,12 +2085,20 @@ struct BrowserPane: View {
 
     private func open(_ file: BrowserFileItem) {
         clearRenameState()
-        if canBrowseInline(file) {
+        switch PaneFileOpenLogic.route(for: file, showHiddenItems: showsHiddenItems) {
+        case .browse:
             navigate(to: file.url)
-        } else if MarkdownFileService.isMarkdownURL(file.url) {
+        case .markdown:
             openWindow(value: MarkdownWindowRequest(url: file.url))
-        } else {
-            NSWorkspace.shared.open(file.url)
+        case .externalApplication:
+            guard NSWorkspace.shared.open(file.url) else {
+                store.lastError = store.loc(
+                    "无法使用默认应用打开 \(file.name)",
+                    "Could not open \(file.name) with its default application"
+                )
+                return
+            }
+            store.statusMessage = store.loc("已打开 \(file.name)", "Opened \(file.name)")
         }
     }
 

@@ -26,19 +26,19 @@ Designed and implemented with help from an LLM. It doesn't try to replace Finder
 - Double-click a Markdown file to open the built-in lightweight reader/editor. Preview, source, and split modes support headings, links, task lists, tables, code blocks, and local images; saves detect external changes before overwriting.
 - Finder-style essentials: Space Quick Look, Cmd+I Get Info, app menu commands for common File/Edit actions, and a cancellable file-task overlay for long compression jobs.
 - Read Aloud for selected Markdown, text/code/data files, HTML/RTF, and searchable PDFs. Optional Doubao Speech provides a more natural voice; configuration/network failures automatically fall back to the local macOS voice.
-- Real Finder system icons; sortable, resizable columns; relative modified dates; zebra striping.
+- Real Finder system icons; Name / Modified / Size / Kind sorting; resizable columns; relative modified dates; zebra striping.
 - Live auto-refresh via FSEvents; reveal in Finder; open Terminal at a folder.
 - Starred folders and system bookmarks (Desktop, Downloads, Documents, …) in the sidebar.
 - Pane locations, sort order, view mode, and settings persist across launches; bilingual UI (English / 中文, follows the system by default).
 
 ### AI agent workflow
 
-- **Agent Inbox**: a cached local review workbench that aggregates Claude / Codex sessions and git activity by project. It shows agent-session counts, uncommitted changes, risk findings, lazily extracted decisions / todos, and a commit-message draft; projects can be pinned, multi-selected, and hidden locally, and detail text can be selected for copying.
+- **Agent Center**: one sidebar entry with Inbox and Sessions views. Inbox is a cached project-level review workbench for Claude / Codex activity, git changes, risks, decisions / todos, and commit drafts; Sessions is the transcript catalog. They share a persistent metadata-only catalog and link directly between a project and its sessions.
 - **Git awareness**: changed files show a status badge (modified / untracked / added / …) inline; folders mark when their contents changed.
 - **Project status card** (per repo): current branch, uncommitted-change count, and recent commits.
 - **Recent changes**: the files git reports as changed, newest-first by modification time — the fast answer to "what did the agent just touch?" Click one to jump to it.
 - **Diff viewer**: open any changed file's `git diff` in-app with add/delete coloring (no editor or terminal needed).
-- **All Sessions**: read local Claude / Codex transcripts, group them by project, search titles/projects/transcript text, and jump here directly from Agent Inbox related sessions.
+- **Sessions**: read bounded local Claude / Codex transcripts with Codex's canonical display titles, selectable text, and rendered Markdown. Consecutive fragments are grouped into IM-style turns (user right, assistant left). Group by project, search titles/projects/transcript text, and copy a conversation as Markdown. Reopening the view reuses the shared metadata catalog instead of rereading unchanged transcript heads.
 - **Claude bridge** (opt-in, no API keys — it reuses your installed `claude` CLI):
   - *Explain with Claude* from the diff viewer — sends that file's diff as context so the explanation is about the actual edit (what changed, intent, risks).
   - *Analyze* / *Ask Claude…* / *Ask About Selection* against a folder.
@@ -101,19 +101,19 @@ XFinder 把多个文件夹放进同一个窗口,让你在多个目录之间同�
 - 双击 Markdown 文件可进入内置轻量阅读器/编辑器;支持阅读、源码、分屏模式以及标题、链接、任务列表、表格、代码块和本地图片,保存前会检测外部修改,避免静默覆盖。
 - Finder 基础体验:空格 Quick Look、Cmd+I 查看信息、菜单栏常用 File/Edit 命令,以及可取消的压缩任务浮层。
 - 朗读所选 Markdown、文本/代码/数据文件、HTML/RTF 和可搜索 PDF;可选豆包语音获得更自然的效果,未配置、断网或请求失败时自动切回 macOS 系统语音。
-- 真实 Finder 系统图标;可排序、可调宽的列;相对修改时间;斑马纹。
+- 真实 Finder 系统图标;名称 / 修改时间 / 大小 / 类型均可排序;列宽可调;相对修改时间;斑马纹。
 - 基于 FSEvents 的实时自动刷新;在 Finder 中显示;在目录打开终端。
 - 侧边栏收藏夹与系统书签(桌面、下载、文稿……)。
 - 面板位置、排序、视图模式与设置跨启动持久化;中英双语界面(默认跟随系统)。
 
 ### AI Agent 工作流
 
-- **Agent Inbox**: 带缓存的本地审查工作台,按项目聚合 Claude / Codex 会话和 git 活动。它展示 agent 会话数、未提交变更、风险提示、懒加载抽取的决策 / 待办,并生成 commit message 草稿;项目可置顶、多选、本地隐藏,详情文本可选中复制。
+- **Agent Center**: 一个侧边栏入口,通过 Inbox / 会话两个视图分别承载项目审查和 transcript 阅读。两者共享持久化的纯元数据目录,并支持从项目直接进入会话、从会话返回项目。
 - **Git 感知**:变更文件行内显示状态徽标(修改 / 未跟踪 / 新增 / …);文件夹在内容有变化时标记。
 - **项目状态卡片**(每个仓库):当前分支、未提交变更数、最近提交。
 - **最近变更**:git 报告的变更文件,按修改时间最新在前——快速回答"agent 刚动了什么?",点击即跳转。
 - **Diff 速览**:在应用内打开任意变更文件的 `git diff`,加/删行着色(无需编辑器或终端)。
-- **全部会话**: 读取本机 Claude / Codex transcript,按项目归组,支持标题、项目和 transcript 正文搜索;可从 Agent Inbox 的相关会话直接跳转。
+- **会话**: 有界读取本机 Claude / Codex transcript,Codex 会话名称与其本地 canonical display title 保持一致;连续片段聚合为 IM 式对话轮次(用户居右、Assistant 居左),并支持按项目归组、文本选择、Markdown 渲染/复制和标题/项目/正文搜索;再次打开时不会重读未变化的会话文件头部。
 - **Claude 桥接**(默认关闭,不存任何 API key——复用你已安装的 `claude` CLI):
   - diff 里的 *用 Claude 解释* —— 把该文件 diff 作为上下文,解释这次改动(改了什么、意图、风险)。
   - 针对目录的 *分析* / *向 Claude 提问* / *针对选中提问*。

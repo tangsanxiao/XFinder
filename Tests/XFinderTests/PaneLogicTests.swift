@@ -104,6 +104,39 @@ private func makeItems(_ names: [String], in root: URL) throws -> [BrowserFileIt
     #expect(stableOrder == ["Alpha", "Beta"])
 }
 
+@Test func sizeSortOrdersFoldersAndFilesInBothDirections() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("XFinderSizeSort-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(
+        at: root.appendingPathComponent("Folder"), withIntermediateDirectories: true)
+    try Data().write(to: root.appendingPathComponent("Empty.txt"))
+    try Data(repeating: 1, count: 10).write(to: root.appendingPathComponent("Small.txt"))
+    try Data(repeating: 1, count: 100).write(to: root.appendingPathComponent("Large.txt"))
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let items = try FileBrowserService.contents(of: root)
+    let ascending = PaneFileSortLogic.sort(items, key: .size, ascending: true).map(\.name)
+    let descending = PaneFileSortLogic.sort(items, key: .size, ascending: false).map(\.name)
+
+    #expect(ascending == ["Folder", "Empty.txt", "Small.txt", "Large.txt"])
+    #expect(descending == ["Large.txt", "Small.txt", "Empty.txt", "Folder"])
+}
+
+@Test func kindSortUsesNameAsAStableTieBreaker() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("XFinderKindSort-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let items = try makeItems(["Zulu.md", "Alpha.md", "Notes.txt"], in: root)
+    let markdownKind = try #require(items.first { $0.name == "Alpha.md" }?.typeDescription)
+    #expect(items.first { $0.name == "Zulu.md" }?.typeDescription == markdownKind)
+
+    let sorted = PaneFileSortLogic.sort(items, key: .kind, ascending: true)
+    let markdownNames = sorted.filter { $0.typeDescription == markdownKind }.map(\.name)
+    #expect(markdownNames == ["Alpha.md", "Zulu.md"])
+}
+
 @Test func visibleRowsFlattenExpandedFoldersWithStableIDsAndOrdinals() throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("XFinderRows-\(UUID().uuidString)", isDirectory: true)

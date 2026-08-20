@@ -17,6 +17,7 @@ struct SessionCenterView: View {
 
     @State private var transcript: SessionTranscript?
     @State private var transcriptLoading = false
+    @State private var transcriptTask: Task<Void, Never>?
     @State private var summaryText: String?
     @State private var summaryRunning = false
     @State private var summaryError: String?
@@ -57,18 +58,23 @@ struct SessionCenterView: View {
             content
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .task { await reload() }
+        .task { await reload(force: false) }
         .onChange(of: store.sessionCenterRequestedSessionID) { requestedID in
             guard let requestedID, let session = sessions.first(where: { $0.id == requestedID }) else { return }
             select(session)
             store.sessionCenterRequestedSessionID = nil
         }
+        .onDisappear {
+            transcriptTask?.cancel()
+            summaryTask?.cancel()
+        }
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text(loc("会话中心", "Session Center"))
+            Text("Agent Center")
                 .font(.system(size: 15, weight: .semibold))
+            AgentCenterSectionPicker()
             if !isLoading {
                 Text(
                     loc(
@@ -80,7 +86,7 @@ struct SessionCenterView: View {
             }
             Spacer()
             Button {
-                Task { await reload() }
+                Task { await reload(force: true) }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
@@ -190,7 +196,8 @@ struct SessionCenterView: View {
                 chinese: chinese,
                 onQuickSummary: { quickSummary() },
                 onLLMSummary: { llmSummary() },
-                onReveal: { NSWorkspace.shared.activateFileViewerSelecting([selected.url]) }
+                onReveal: { NSWorkspace.shared.activateFileViewerSelecting([selected.url]) },
+                onOpenProject: { openProject(for: selected) }
             )
         } else {
             EmptyStateView(
@@ -212,18 +219,26 @@ struct SessionCenterView: View {
     }
 
     private func select(_ session: SessionSummary) {
+        transcriptTask?.cancel()
         selectedID = session.id
         transcript = nil
         summaryText = nil
         summaryError = nil
         summaryTask?.cancel()
         transcriptLoading = true
-        Task {
+        transcriptTask = Task {
             let loaded = await SessionScanner.transcript(for: session.url)
-            guard selectedID == session.id else { return }
+            guard !Task.isCancelled, selectedID == session.id else { return }
             transcript = loaded
             transcriptLoading = false
         }
+    }
+
+    private func openProject(for session: SessionSummary) {
+        guard let projectPath = session.projectPath else { return }
+        store.agentInboxRequestedProjectID = URL(fileURLWithPath: projectPath).standardizedFileURL.path
+        store.settings.agentCenterSection = .inbox
+        store.activePanel = .agent
     }
 
     /// Instant, deterministic recap from the transcript — no LLM.
@@ -274,9 +289,9 @@ struct SessionCenterView: View {
         return "\(n)"
     }
 
-    private func reload() async {
+    private func reload(force: Bool) async {
         isLoading = true
-        sessions = await SessionScanner.scan()
+        sessions = await store.sessionCatalog.sessions(force: force)
         transcriptIndex = [:]
         if let requestedID = store.sessionCenterRequestedSessionID,
             let requested = sessions.first(where: { $0.id == requestedID })
@@ -340,7 +355,13 @@ private struct SessionRow: View {
     }()
 }
 
+private enum SessionDetailDisplayMode: String {
+    case text
+    case markdown
+}
+
 private struct SessionDetailView: View {
+    @EnvironmentObject private var store: WorkspaceStore
     let session: SessionSummary
     let transcript: SessionTranscript?
     let transcriptLoading: Bool
@@ -352,13 +373,42 @@ private struct SessionDetailView: View {
     let onQuickSummary: () -> Void
     let onLLMSummary: () -> Void
     let onReveal: () -> Void
+    let onOpenProject: () -> Void
+
+    @State private var displayMode = SessionDetailDisplayMode.text
+    @State private var markdownTranscript: SessionMarkdownTranscript?
+    @State private var markdownSessionID: SessionSummary.ID?
+    @State private var markdownLoading = false
+    @State private var copyMarkdownTask: Task<Void, Never>?
 
     private func loc(_ zh: String, _ en: String) -> String { chinese ? zh : en }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(session.title).font(.system(size: 16, weight: .semibold)).lineLimit(2).textSelection(.enabled)
+                HStack(alignment: .top, spacing: 10) {
+                    Text(session.title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 8)
+                    Picker("", selection: $displayMode) {
+                        Text(loc("文本", "Text")).tag(SessionDetailDisplayMode.text)
+                        Text("Markdown").tag(SessionDetailDisplayMode.markdown)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 146)
+                    if displayMode == .markdown, transcript != nil {
+                        Button {
+                            copyMarkdown()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.plain)
+                        .help(loc("复制 Markdown", "Copy Markdown"))
+                    }
+                }
                 HStack(spacing: 10) {
                     Label(session.agent.displayName, systemImage: "cpu").font(.system(size: 11)).foregroundStyle(
                         .secondary)
@@ -370,6 +420,16 @@ private struct SessionDetailView: View {
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                     .help(loc("在 Finder 中显示", "Reveal in Finder"))
+                    if session.projectPath != nil {
+                        Button {
+                            onOpenProject()
+                        } label: {
+                            Label(loc("返回项目", "Back to project"), systemImage: "arrowshape.turn.up.backward")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help(loc("在 Agent Inbox 中打开项目", "Open project in Agent Inbox"))
+                    }
                 }
                 summaryBar
             }
@@ -377,6 +437,12 @@ private struct SessionDetailView: View {
             Divider()
             transcriptView
         }
+        .task(id: markdownTaskID) { await loadMarkdownIfNeeded() }
+        .onChange(of: session.id) { _ in
+            markdownTranscript = nil
+            markdownSessionID = nil
+        }
+        .onDisappear { copyMarkdownTask?.cancel() }
     }
 
     private var summaryBar: some View {
@@ -421,31 +487,157 @@ private struct SessionDetailView: View {
         if transcriptLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let transcript {
+            switch displayMode {
+            case .text:
+                plainTranscriptView(transcript)
+            case .markdown:
+                markdownTranscriptView(transcript)
+            }
+        } else {
+            Color.clear
+        }
+    }
+
+    private func plainTranscriptView(_ transcript: SessionTranscript) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                if transcript.wasTruncated { truncationNotice }
+                ForEach(transcript.messages) { message in
+                    messageContainer(role: message.role) {
+                        Text(message.text)
+                            .font(.system(size: 12))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    @ViewBuilder
+    private func markdownTranscriptView(_ transcript: SessionTranscript) -> some View {
+        if markdownLoading || markdownSessionID != session.id || markdownTranscript == nil {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let markdownTranscript {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(transcript.messages) { message in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(message.role == .user ? loc("用户", "User") : "Assistant")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(message.role == .user ? Color.accentColor : Color.secondary)
-                            Text(message.text)
-                                .font(.system(size: 12))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                    if markdownTranscript.wasTruncated { truncationNotice }
+                    ForEach(markdownTranscript.turns) { turn in
+                        conversationTurnContainer(role: turn.role) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(turn.document.blocks) { block in
+                                    MarkdownBlockView(
+                                        block: block,
+                                        sourceURL: markdownSourceURL,
+                                        searchQuery: "",
+                                        highlightedBlockIDs: [],
+                                        onToggleTask: { _ in }
+                                    )
+                                }
+                                if turn.document.blocks.isEmpty {
+                                    Text(loc("空消息", "Empty message"))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .padding(10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(
-                                    message.role == .user
-                                        ? Color.accentColor.opacity(0.06) : Color.secondary.opacity(0.06))
-                        )
                     }
                 }
                 .padding(16)
             }
-        } else {
-            Color.clear
+        }
+    }
+
+    private func messageContainer<Content: View>(
+        role: SessionMessage.Role,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(role == .user ? loc("用户", "User") : "Assistant")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(role == .user ? Color.accentColor : Color.secondary)
+            content()
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(role == .user ? Color.accentColor.opacity(0.06) : Color.secondary.opacity(0.06))
+        )
+    }
+
+    private func conversationTurnContainer<Content: View>(
+        role: SessionMessage.Role,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            if role == .user { Spacer(minLength: 56) }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(role == .user ? loc("用户", "User") : "Assistant")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(role == .user ? Color.accentColor : Color.secondary)
+                    .frame(maxWidth: .infinity, alignment: role == .user ? .trailing : .leading)
+                content()
+            }
+            .padding(12)
+            .frame(maxWidth: role == .user ? 680 : .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(role == .user ? Color.accentColor.opacity(0.11) : Color.secondary.opacity(0.06))
+            )
+            if role == .assistant { Spacer(minLength: 56) }
+        }
+        .frame(maxWidth: .infinity, alignment: role == .user ? .trailing : .leading)
+    }
+
+    private var truncationNotice: some View {
+        Label(
+            loc("为保证性能，会话内容已按上限抽样", "Session content sampled to stay within performance limits"),
+            systemImage: "gauge.with.dots.needle.33percent"
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(Color.secondary.opacity(0.07))
+    }
+
+    private var markdownTaskID: String {
+        "\(session.id):\(displayMode.rawValue):\(transcript?.messages.count ?? -1):\(transcript?.exactTokens ?? -1)"
+    }
+
+    private var markdownSourceURL: URL {
+        guard let projectPath = session.projectPath else { return session.url }
+        return URL(fileURLWithPath: projectPath, isDirectory: true).appendingPathComponent("session.md")
+    }
+
+    private func loadMarkdownIfNeeded() async {
+        guard displayMode == .markdown, let transcript else { return }
+        if markdownSessionID == session.id, markdownTranscript != nil { return }
+        markdownLoading = true
+        let rendered = await SessionMarkdownRendering.render(transcript)
+        guard !Task.isCancelled, displayMode == .markdown else { return }
+        markdownTranscript = rendered
+        markdownSessionID = session.id
+        markdownLoading = false
+    }
+
+    private func copyMarkdown() {
+        guard let transcript else { return }
+        copyMarkdownTask?.cancel()
+        copyMarkdownTask = Task {
+            guard let source = await SessionMarkdownRendering.sourceAsync(from: transcript), !Task.isCancelled else {
+                return
+            }
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            guard pasteboard.setString(source, forType: .string) else {
+                store.lastError = loc("复制 Markdown 失败", "Could not copy Markdown")
+                return
+            }
+            store.statusMessage = loc("已复制会话 Markdown", "Copied session Markdown")
         }
     }
 }
