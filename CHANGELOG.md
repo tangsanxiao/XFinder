@@ -4,6 +4,8 @@ Key user-visible changes to XFinder. Newest first.
 
 ## [Unreleased]
 
+## [0.5.0] — Agent Center and Session Review
+
 ### Added
 - Agent Center unifies Inbox and Sessions navigation, adds rendered Markdown session reading/copying, and supports direct project/session round trips.
 - File lists can now sort by Size and Kind as well as Name and Modified.
