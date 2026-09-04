@@ -49,7 +49,18 @@ struct SidebarView: View {
     /// Settings entry at the sidebar's bottom-left (Claude-desktop style); the
     /// standard ⌘, command is the other entry point.
     private var sidebarFooter: some View {
-        HStack {
+        HStack(spacing: 12) {
+            Button {
+                store.activePanel = .network
+            } label: {
+                Image(systemName: "network")
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(store.activePanel == .network ? Color.accentColor : Color.secondary)
+            .helpTip(store.loc("网络状态", "Network Status"))
+
             Button {
                 store.isSettingsPresented = true
             } label: {

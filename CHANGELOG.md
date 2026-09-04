@@ -4,6 +4,12 @@ Key user-visible changes to XFinder. Newest first.
 
 ## [Unreleased]
 
+### Added
+- Network Status center in the sidebar with bounded checks for OpenAI API, Claude API, Baidu, Tencent, and custom HTTP(S) endpoints.
+- Egress IP/approximate region and provider availability-risk indicators, with live API rejection kept separate from policy-list inference.
+- On-demand stability monitoring with latency, P95, jitter, success rate, DNS/TCP/TLS/TTFB detail, and bounded history sparklines.
+- Live physical-interface upload/download rates plus an explicit, cancellable macOS `networkQuality` capacity test.
+
 ## [0.5.0] — Agent Center and Session Review
 
 ### Added

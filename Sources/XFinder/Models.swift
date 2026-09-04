@@ -110,6 +110,8 @@ struct AppSettings: Codable, Equatable {
     /// Optional cloud voice for Read Aloud. System speech remains the default
     /// and is always available as the fallback.
     var doubaoTTS = DoubaoTTSConfig()
+    /// Network Diagnostics custom endpoints and bounded monitoring cadence.
+    var networkDiagnostics = NetworkDiagnosticsConfig()
 
     private enum CodingKeys: String, CodingKey {
         case claudeIntegrationEnabled
@@ -120,6 +122,7 @@ struct AppSettings: Codable, Equatable {
         case skillLibraryPath
         case summaryLLM
         case doubaoTTS
+        case networkDiagnostics
     }
 
     init() {}
@@ -135,6 +138,9 @@ struct AppSettings: Codable, Equatable {
         skillLibraryPath = try container.decodeIfPresent(String.self, forKey: .skillLibraryPath) ?? ""
         summaryLLM = try container.decodeIfPresent(SummaryLLMConfig.self, forKey: .summaryLLM) ?? SummaryLLMConfig()
         doubaoTTS = try container.decodeIfPresent(DoubaoTTSConfig.self, forKey: .doubaoTTS) ?? DoubaoTTSConfig()
+        networkDiagnostics =
+            try container.decodeIfPresent(NetworkDiagnosticsConfig.self, forKey: .networkDiagnostics)
+            ?? NetworkDiagnosticsConfig()
     }
 }
 

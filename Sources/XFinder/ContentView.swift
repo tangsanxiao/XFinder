@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var store: WorkspaceStore
     @StateObject private var tooltip = TooltipCenter()
+    @StateObject private var networkDiagnostics = NetworkDiagnosticsController()
     @State private var paneViewModes: [UUID: BrowserViewMode] = [:]
     @State private var isSidebarVisible = true
 
@@ -33,6 +34,8 @@ struct ContentView: View {
                 case .sessions:
                     SessionCenterView(isSidebarVisible: isSidebarVisible)
                 }
+            case .network:
+                NetworkStatusView(controller: networkDiagnostics, isSidebarVisible: isSidebarVisible)
             case .files:
                 WorkspaceDetailView(
                     focusedDirectoryID: focusedDirectoryID,
