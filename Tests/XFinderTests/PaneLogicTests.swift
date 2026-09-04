@@ -133,7 +133,7 @@ private func makeItems(_ names: [String], in root: URL) throws -> [BrowserFileIt
     #expect(items.first { $0.name == "Zulu.md" }?.typeDescription == markdownKind)
 
     let sorted = PaneFileSortLogic.sort(items, key: .kind, ascending: true)
-    let markdownNames = sorted.filter { $0.typeDescription == markdownKind }.map(\.name)
+    let markdownNames = sorted.filter { $0.url.pathExtension == "md" }.map(\.name)
     #expect(markdownNames == ["Alpha.md", "Zulu.md"])
 }
 
