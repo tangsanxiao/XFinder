@@ -43,13 +43,13 @@ final class NetworkDiagnosticsController: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let pathChanged =
-                    pathSnapshot != .unknown
-                    && (pathSnapshot.interfaceNames != snapshot.interfaceNames
-                        || pathSnapshot.isSatisfied != snapshot.isSatisfied)
-                pathSnapshot = snapshot
+                    self.pathSnapshot != .unknown
+                    && (self.pathSnapshot.interfaceNames != snapshot.interfaceNames
+                        || self.pathSnapshot.isSatisfied != snapshot.isSatisfied)
+                self.pathSnapshot = snapshot
                 if pathChanged {
-                    egressIdentity = nil
-                    emit(
+                    self.egressIdentity = nil
+                    self.emit(
                         zh: "网络路径已改变，请重新检测出口与节点状态。",
                         en: "The network path changed. Run the check again to refresh the route and endpoints."
                     )
@@ -81,14 +81,14 @@ final class NetworkDiagnosticsController: ObservableObject {
 
         checkTask = Task { [weak self] in
             guard let self else { return }
-            async let identity = identityService.fetch()
-            await performProbePass(targets: targets, samplesPerTarget: 5, generation: generation)
+            async let identity = self.identityService.fetch()
+            await self.performProbePass(targets: targets, samplesPerTarget: 5, generation: generation)
             let fetchedIdentity = await identity
-            guard !Task.isCancelled, operationGeneration == generation else { return }
-            egressIdentity = fetchedIdentity
-            isChecking = false
-            checkProgress = 1
-            emit(zh: "网络检测完成。", en: "Network check completed.")
+            guard !Task.isCancelled, self.operationGeneration == generation else { return }
+            self.egressIdentity = fetchedIdentity
+            self.isChecking = false
+            self.checkProgress = 1
+            self.emit(zh: "网络检测完成。", en: "Network check completed.")
         }
     }
 
@@ -106,21 +106,21 @@ final class NetworkDiagnosticsController: ObservableObject {
 
         monitoringTask = Task { [weak self] in
             guard let self else { return }
-            while !Task.isCancelled, Date() < deadline, operationGeneration == generation {
-                await performProbePass(targets: targets, samplesPerTarget: 1, generation: generation)
-                guard !Task.isCancelled, Date() < deadline, operationGeneration == generation else { break }
+            while !Task.isCancelled, Date() < deadline, self.operationGeneration == generation {
+                await self.performProbePass(targets: targets, samplesPerTarget: 1, generation: generation)
+                guard !Task.isCancelled, Date() < deadline, self.operationGeneration == generation else { break }
                 do {
                     try await Task.sleep(for: .seconds(safeInterval))
                 } catch {
                     break
                 }
             }
-            guard operationGeneration == generation else { return }
-            isMonitoring = false
-            monitoringDeadline = nil
-            monitoringTask = nil
+            guard self.operationGeneration == generation else { return }
+            self.isMonitoring = false
+            self.monitoringDeadline = nil
+            self.monitoringTask = nil
             if !Task.isCancelled {
-                emit(zh: "稳定性监测已完成。", en: "Stability monitoring completed.")
+                self.emit(zh: "稳定性监测已完成。", en: "Stability monitoring completed.")
             }
         }
     }
@@ -146,19 +146,19 @@ final class NetworkDiagnosticsController: ObservableObject {
         qualityTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await qualityRunner.run()
+                let result = try await self.qualityRunner.run()
                 guard !Task.isCancelled else { return }
-                qualityResult = result
-                isSpeedTesting = false
-                qualityTask = nil
-                emit(zh: "完整测速已完成。", en: "Full speed test completed.")
+                self.qualityResult = result
+                self.isSpeedTesting = false
+                self.qualityTask = nil
+                self.emit(zh: "完整测速已完成。", en: "Full speed test completed.")
             } catch NetworkQualityRunnerError.cancelled {
-                isSpeedTesting = false
-                qualityTask = nil
+                self.isSpeedTesting = false
+                self.qualityTask = nil
             } catch {
-                isSpeedTesting = false
-                qualityTask = nil
-                emit(
+                self.isSpeedTesting = false
+                self.qualityTask = nil
+                self.emit(
                     zh: "完整测速失败：\(error.localizedDescription)",
                     en: "Full speed test failed: \(error.localizedDescription)",
                     isError: true
@@ -227,10 +227,10 @@ final class NetworkDiagnosticsController: ObservableObject {
                     NetworkInterfaceCounterReader.read()
                 }.value
                 if let rate = tracker.accept(counters, at: NetworkMonotonicClock.now()), let self {
-                    currentTraffic = rate
-                    trafficHistory.append(rate)
-                    if trafficHistory.count > 60 {
-                        trafficHistory.removeFirst(trafficHistory.count - 60)
+                    self.currentTraffic = rate
+                    self.trafficHistory.append(rate)
+                    if self.trafficHistory.count > 60 {
+                        self.trafficHistory.removeFirst(self.trafficHistory.count - 60)
                     }
                 }
                 do {
