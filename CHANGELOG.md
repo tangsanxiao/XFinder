@@ -4,6 +4,8 @@ Key user-visible changes to XFinder. Newest first.
 
 ## [Unreleased]
 
+## [0.6.0] — Network Status Center
+
 ### Added
 - Network Status center in the sidebar with bounded checks for OpenAI API, Claude API, Baidu, Tencent, and custom HTTP(S) endpoints.
 - Egress IP/approximate region and provider availability-risk indicators, with live API rejection kept separate from policy-list inference.
