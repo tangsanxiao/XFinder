@@ -4,8 +4,13 @@ Key user-visible changes to XFinder. Newest first.
 
 ## [Unreleased]
 
+## [0.6.1] — Signed Distribution and Settings
+
 ### Added
-- Local releases support Developer ID signing and Apple notarization, including offline ticket stapling.
+- Developer ID signed and Apple-notarized releases with offline verification tickets.
+
+### Changed
+- Settings removes the Claude integration section; About now opens a concise feature overview with the GitHub repository link.
 
 ## [0.6.0] — Network Status Center
 

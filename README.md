@@ -34,6 +34,7 @@ Designed and implemented with help from an LLM. It doesn't try to replace Finder
 ### AI agent workflow
 
 - **Agent Center**: one sidebar entry with Inbox and Sessions views. Inbox is a cached project-level review workbench for Claude / Codex activity, git changes, risks, decisions / todos, and commit drafts; Sessions is the transcript catalog. They share a persistent metadata-only catalog and link directly between a project and its sessions.
+- **Network Status**: endpoint reachability, latency and stability checks, egress information, and on-demand bandwidth testing. Leaving the page stops monitoring and traffic sampling.
 - **Git awareness**: changed files show a status badge (modified / untracked / added / …) inline; folders mark when their contents changed.
 - **Project status card** (per repo): current branch, uncommitted-change count, and recent commits.
 - **Recent changes**: the files git reports as changed, newest-first by modification time — the fast answer to "what did the agent just touch?" Click one to jump to it.
@@ -50,9 +51,8 @@ Open from the gear at the bottom of the sidebar:
 
 - **Language** — System / 中文 / English.
 - **Read Aloud** — optional Doubao Speech API key, resource, and voice; off by default with system-voice fallback.
-- **Claude integration** — off by default; optional custom `claude` CLI path. When off, all Claude actions are hidden.
 - **Debug mode** — shows the Activity & Errors panel and the Restart button.
-- **What's New** — the in-app changelog.
+- **Feature Overview** — a concise overview of file management, Agent Center, Markdown/read-aloud, and network diagnostics, with the GitHub repository link.
 
 ### Build & run
 
@@ -65,14 +65,14 @@ swift test                     # run the test suite
 
 ### Distribution
 
-`scripts/release.sh` builds, ad-hoc signs, zips, and writes a SHA-256 checksum into `release/`; `.github/workflows/release.yml` publishes a GitHub Release on a `v*` tag. Download `XFinder-*-macOS-*.zip` from Releases, unzip, and move `XFinder.app` to `/Applications`.
+`scripts/release.sh` builds, signs, zips, and writes a SHA-256 checksum into `release/`. Public releases are signed with Developer ID and notarized by Apple. Download `XFinder-*-macOS-*.zip` from Releases, unzip, and move `XFinder.app` to `/Applications`.
 
-Test builds are **ad-hoc signed**, so on first launch macOS may block the app — right-click `XFinder.app` → **Open** → confirm. The GitHub workflow currently publishes test builds; it does not have access to your local signing keychain.
+Local builds without signing configuration are **ad-hoc signed**. The GitHub release workflow publishes only a verified signed draft; it does not have access to your local signing keychain.
 
 For a local notarized release, install a Developer ID Application identity with its private key and Apple intermediate certificate, then store notarization credentials with `xcrun notarytool store-credentials XFinder-notary`. Run:
 
 ```bash
-XFINDER_VERSION=0.5.1 \
+XFINDER_VERSION=0.6.1 \
 XFINDER_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAM_ID)" \
 XFINDER_NOTARY_PROFILE=XFinder-notary ./scripts/release.sh
 ```
@@ -81,9 +81,11 @@ The script enables Hardened Runtime with Apple Events permission, signs with a s
 
 The wait is limited to five minutes; Apple continues processing after a timeout. Keep `dist/XFinder.app` unchanged and rerun the same release command with `XFINDER_NOTARY_RESUME_ID=<submission-id>` to finish without rebuilding or uploading again. The submission ID is printed and stored in `dist/notarization-submission.json`.
 
+Release sequence: commit the release changes, build and notarize that commit, push `main` and confirm CI, upload the ZIP and checksum to a draft GitHub Release targeting that commit, then push its `v*` tag. The release workflow verifies the archive checksum, version, signing team, signature, stapled ticket, and Gatekeeper acceptance before publishing the draft. Missing or invalid assets fail the workflow instead of falling back to an unsigned release. Do not change the bundled changelog after signing.
+
 ### Limitations
 
-- GitHub test builds remain ad-hoc signed; local Developer ID notarization is available. Packaged build targets Apple Silicon.
+- Packaged build targets Apple Silicon; Intel Macs are not supported by the distributed binary.
 - Not full Finder parity (no tags, smart folders, server browsing, rich metadata editing).
 - Automated tests cover pure / file-operation / git-parsing logic; GUI behavior is verified manually.
 
@@ -137,9 +139,8 @@ XFinder 把多个文件夹放进同一个窗口,让你在多个目录之间同�
 
 - **语言** —— 跟随系统 / 中文 / English。
 - **文件朗读** —— 可选配置豆包语音 API Key、资源和音色;默认关闭并始终保留系统语音兜底。
-- **Claude 集成** —— 默认关闭;可自定义 `claude` CLI 路径;关闭时所有 Claude 入口隐藏。
 - **Debug 模式** —— 显示"操作与错误记录"面板和重启按钮。
-- **What's New** —— 应用内更新日志。
+- **功能简介** —— 文件管理、Agent 中心、Markdown/朗读及网络测试简介,附 GitHub 仓库链接。
 
 ### 构建与运行
 
@@ -152,13 +153,13 @@ swift test                     # 运行测试
 
 ### 分发
 
-`scripts/release.sh` 会构建、ad-hoc 签名、打包并生成 SHA-256 校验文件到 `release/`;推送 `v*` tag 时 `.github/workflows/release.yml` 自动创建 GitHub Release。从 Releases 下载 `XFinder-*-macOS-*.zip`,解压后把 `XFinder.app` 移到 `/Applications`。
+`scripts/release.sh` 构建签名应用,生成 ZIP 和 SHA-256 校验文件到 `release/`;推送 `v*` 标签时,发布 workflow 验证已上传的公证版草稿后发布。从 Releases 下载 `XFinder-*-macOS-*.zip`,解压后把 `XFinder.app` 移到 `/Applications`。
 
-测试版本为 **ad-hoc 签名**,首次打开 macOS 可能拦截——右键 `XFinder.app` → **打开** → 确认。本地正式发布可使用上方 Distribution 中的命令配置 Developer ID 签名与 Apple 公证;脚本通过公证、票据装订及 Gatekeeper 检查后才生成最终 ZIP。GitHub runner 尚未配置签名凭据,仍发布测试版本。
+正式发布使用 Developer ID 签名和 Apple 公证。按上方 Distribution 流程,本地签名公证后上传 ZIP 和校验文件至 GitHub Release 草稿,推送版本标签后由 CI 验证并发布。未配置签名身份的本地构建仍为 ad-hoc 测试版本。
 
 ### 局限
 
-- GitHub 测试版本仍为 ad-hoc 签名;本地支持 Developer ID 签名及公证。打包版本面向 Apple Silicon。
+- 打包版本面向 Apple Silicon,不支持 Intel Mac。
 - 不追求完整 Finder 对齐(无标签、智能文件夹、服务器浏览、丰富元数据编辑)。
 - 自动化测试覆盖纯逻辑 / 文件操作 / git 解析;GUI 行为人工验证。
 

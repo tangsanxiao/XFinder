@@ -158,7 +158,11 @@
 ## 通用
 
 - **要求**：用户可感知的操作结果一律走 `store.statusMessage` / `store.lastError`，不要 print 或静默吞掉。这两个属性的 didSet 会自动进入 app 内的 Activity & Errors 面板，是排错的唯一线索来源。
-- **要求**：`build-app.sh` 会把 `CHANGELOG.md` 拷进 app bundle 供"What's New"面板展示——改 CHANGELOG 后要重新打包才能在 app 内看到。
+- **要求**：设置中的“功能简介”使用静态双语内容,不得触发目录扫描或网络请求;GitHub 链接仅在点击后打开。`CHANGELOG.md` 仍随 app bundle 归档,变更后需要重新打包签名。
+
+- **情况**：GitHub runner 无法访问本地签名私钥,直接重建会把正式版本降为 ad-hoc。
+  **要求**：发布前将最终提交的签名公证包上传到 Release 草稿,再推标签;workflow 验证校验和、版本、Team ID、签名、装订票据及 Gatekeeper 后才能发布,验证失败不得降级发布。
+  **原因**：远端发布的必须是经过本地公证和验证的同一份产物。
 
 - 只用 SwiftPM 一个包管理器；`.build/`、`dist/`、`release/`、`AI_CONTEXT.md` 保持 gitignore。
 - 避免 `NavigationSplitView`（标题栏间距不可控），用自定义 sidebar/content split。

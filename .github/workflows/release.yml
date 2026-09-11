@@ -10,20 +10,34 @@ permissions:
 
 jobs:
   build:
-    name: Build macOS release
+    name: Verify and publish notarized release
     runs-on: macos-15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build release artifacts
-        run: ./scripts/release.sh
-
-      - name: Create GitHub Release
+      - name: Download and verify signed draft assets
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" release/* \
-            --title "XFinder ${GITHUB_REF_NAME}" \
-            --notes "XFinder macOS test build. This build uses ad-hoc signing, so first launch may require right-click Open or approving it in System Settings."
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ZIP="XFinder-${VERSION}-macOS-arm64.zip"
+          gh release download "$GITHUB_REF_NAME" --dir release --pattern "$ZIP" --pattern "$ZIP.sha256"
+          cd release
+          shasum -a 256 -c "$ZIP.sha256"
+          ditto -x -k "$ZIP" verified
+          APP="verified/XFinder.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "$VERSION"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv "$APP" 2>&1 | grep -Fx 'TeamIdentifier=RZF2KD932G'
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+
+      - name: Publish verified GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest

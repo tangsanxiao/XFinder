@@ -12,8 +12,8 @@ For working conventions and known traps, see [AGENTS.md](AGENTS.md).
 - `swift build` — compile.
 - `swift test` — swift-testing suite (no XCTest; see AGENTS.md for why).
 - `swift format lint --strict --recursive Sources Tests` — style gate (config: `.swift-format`); `swift format format -i ...` to auto-fix.
-- `./scripts/build-app.sh` — package `dist/XFinder.app` (ad-hoc signed).
-- `./scripts/release.sh` — build + zip + checksum into `release/` (tag-triggered in CI).
+- `./scripts/build-app.sh` — package `dist/XFinder.app` (Developer ID when configured; ad-hoc for local tests).
+- `./scripts/release.sh` — build, sign, notarize, staple, zip, and checksum into `release/`. Tag-triggered CI verifies uploaded draft assets before publishing, without exporting local signing credentials.
 
 `WorkspaceStore` takes an optional `supportDirectory` so tests inject a temp
 directory and stay isolated from the real Application Support; file-operation
@@ -141,9 +141,7 @@ permissions, access flags). `QuickLookController` delegates to the system
 
 ## In-app self-inspection
 
-- `AppInfoViews` provides the "What's New" sheet (renders the CHANGELOG.md
-  bundled by build-app.sh via `ChangelogParser`, a pure line-based parser)
-  and the Activity & Errors trace panel.
+- `FeatureOverviewSheet` provides a static bilingual feature summary and repository link from Settings. It performs no file or network IO. `AppInfoViews` provides the Activity & Errors trace panel and retains the legacy changelog renderer.
 - `WorkspaceStore` records every `statusMessage`/`lastError` into a capped
   `events` log (newest first) that the trace panel displays.
 - `SessionCenterView` lists local Claude/Codex transcripts and lazily builds a
