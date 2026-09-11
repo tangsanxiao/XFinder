@@ -98,7 +98,7 @@ struct AppSettings: Codable, Equatable {
     /// Empty = resolve `claude` via the login shell's PATH. A custom path is
     /// used verbatim when the CLI isn't on PATH.
     var claudeCLIPath = ""
-    /// When on, the top toolbar shows the Activity & Errors (trace) button.
+    /// When on, the layout menu offers Restart App.
     var debugModeEnabled = false
     var language: AppLanguage = .system
     var agentCenterSection: AgentCenterSection = .inbox

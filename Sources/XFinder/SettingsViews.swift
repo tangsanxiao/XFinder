@@ -210,8 +210,8 @@ struct SettingsView: View {
                     Text(store.loc("开启 Debug 模式", "Enable Debug mode"))
                     Text(
                         store.loc(
-                            "在顶部工具栏显示「操作与错误记录」面板，便于排查问题。默认关闭。",
-                            "Show the Activity & Errors panel in the top toolbar for troubleshooting. Off by default."
+                            "在布局菜单中显示重启应用入口。默认关闭。",
+                            "Show Restart App in the layout menu. Off by default."
                         )
                     )
                     .font(.caption)

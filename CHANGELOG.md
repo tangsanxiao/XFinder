@@ -4,6 +4,11 @@ Key user-visible changes to XFinder. Newest first.
 
 ## [Unreleased]
 
+## [0.6.2] — Toolbar Cleanup
+
+### Changed
+- Removes the top-right Activity & Errors button, error badge, and tooltip; Debug mode retains the restart shortcut.
+
 ## [0.6.1] — Signed Distribution and Settings
 
 ### Added

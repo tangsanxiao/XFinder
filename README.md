@@ -51,7 +51,7 @@ Open from the gear at the bottom of the sidebar:
 
 - **Language** — System / 中文 / English.
 - **Read Aloud** — optional Doubao Speech API key, resource, and voice; off by default with system-voice fallback.
-- **Debug mode** — shows the Activity & Errors panel and the Restart button.
+- **Debug mode** — shows Restart App in the layout menu.
 - **Feature Overview** — a concise overview of file management, Agent Center, Markdown/read-aloud, and network diagnostics, with the GitHub repository link.
 
 ### Build & run
@@ -139,7 +139,7 @@ XFinder 把多个文件夹放进同一个窗口,让你在多个目录之间同�
 
 - **语言** —— 跟随系统 / 中文 / English。
 - **文件朗读** —— 可选配置豆包语音 API Key、资源和音色;默认关闭并始终保留系统语音兜底。
-- **Debug 模式** —— 显示"操作与错误记录"面板和重启按钮。
+- **Debug 模式** —— 在布局菜单中显示重启应用入口。
 - **功能简介** —— 文件管理、Agent 中心、Markdown/朗读及网络测试简介,附 GitHub 仓库链接。
 
 ### 构建与运行

@@ -50,7 +50,6 @@ private struct FinderLikeToolbar: View {
     @Binding var focusedDirectoryID: UUID?
     @Binding var isSidebarVisible: Bool
     @State private var isLayoutPopoverShown = false
-    @State private var isEventLogShown = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -68,10 +67,6 @@ private struct FinderLikeToolbar: View {
             // sidebar toggle now lives at the window's top-left (ContentView).
             HStack(spacing: 8) {
                 layoutMenu
-                // Trace panel is a debug affordance — only when Debug mode is on.
-                if store.settings.debugModeEnabled {
-                    eventLogButton
-                }
             }
         }
         // When the sidebar is collapsed, clear the traffic lights + the
@@ -81,29 +76,6 @@ private struct FinderLikeToolbar: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .onTapGesture(count: 2) {
             WindowZoomController.toggle()
-        }
-    }
-
-    /// Trace-panel button with a red dot when the latest event is an error.
-    private var eventLogButton: some View {
-        PaneToolbarActionButton(
-            systemImage: "list.bullet.rectangle",
-            accessibilityLabel: "Activity & Errors",
-            tooltip: store.loc("操作与错误记录", "Activity & Errors")
-        ) {
-            isEventLogShown = true
-        }
-        .overlay(alignment: .topTrailing) {
-            if store.events.first?.isError == true {
-                Circle()
-                    .fill(Color.red)
-                    .frame(width: 7, height: 7)
-                    .offset(x: -1, y: 1)
-                    .allowsHitTesting(false)
-            }
-        }
-        .popover(isPresented: $isEventLogShown, arrowEdge: .bottom) {
-            EventLogPanel(events: store.events, onClear: { store.clearEvents() })
         }
     }
 

@@ -141,9 +141,9 @@ permissions, access flags). `QuickLookController` delegates to the system
 
 ## In-app self-inspection
 
-- `FeatureOverviewSheet` provides a static bilingual feature summary and repository link from Settings. It performs no file or network IO. `AppInfoViews` provides the Activity & Errors trace panel and retains the legacy changelog renderer.
+- `FeatureOverviewSheet` provides a static bilingual feature summary and repository link from Settings. It performs no file or network IO. The toolbar no longer exposes Activity & Errors; `AppInfoViews` retains its legacy renderers.
 - `WorkspaceStore` records every `statusMessage`/`lastError` into a capped
-  `events` log (newest first) that the trace panel displays.
+  `events` log (newest first) for internal diagnostics; operation feedback still uses existing status and error surfaces.
 - `SessionCenterView` lists local Claude/Codex transcripts and lazily builds a
   local full-text transcript index only when the user searches, keeping the
   default list scan cheap for large session directories. Opening it reuses the

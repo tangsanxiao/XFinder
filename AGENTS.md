@@ -157,7 +157,7 @@
 
 ## 通用
 
-- **要求**：用户可感知的操作结果一律走 `store.statusMessage` / `store.lastError`，不要 print 或静默吞掉。这两个属性的 didSet 会自动进入 app 内的 Activity & Errors 面板，是排错的唯一线索来源。
+- **要求**：用户可感知的操作结果一律走 `store.statusMessage` / `store.lastError`，不要 print 或静默吞掉。这两个属性保留有界内部事件记录;右上角操作与错误记录入口已移除,新增功能不要重新引入该按钮、红点或 tooltip。
 - **要求**：设置中的“功能简介”使用静态双语内容,不得触发目录扫描或网络请求;GitHub 链接仅在点击后打开。`CHANGELOG.md` 仍随 app bundle 归档,变更后需要重新打包签名。
 
 - **情况**：GitHub runner 无法访问本地签名私钥,直接重建会把正式版本降为 ad-hoc。
