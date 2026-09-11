@@ -4,6 +4,10 @@
 
 ## 构建与打包
 
+- **情况**：正式发布使用 Developer ID,发布脚本再次 ad-hoc 签名会覆盖有效身份;公证前打出的 ZIP 不含离线票据。
+  **要求**：正式构建通过 `XFINDER_SIGNING_IDENTITY` 启用 Hardened Runtime、时间戳及 Apple Events entitlement;发布必须使用 `XFINDER_NOTARY_PROFILE`,等待 Accepted 后 staple、validate、Gatekeeper 验证,最后重新压缩并计算校验。保留本地测试的 ad-hoc 默认分支,私钥和凭据不得入库。
+  **原因**：签名、权限、公证和最终分发文件必须一致;自动化权限需要在签名后的真实产物中回归验证。
+
 - **情况**：`scripts/build-app.sh` 用 `set -euo pipefail`，里面的 `git describe --tags --exact-match` 在 HEAD 没有精确 tag 时返回 128。
   **要求**：脚本里每个可能失败的 `git` 调用都要以 `|| true` 收尾（即使有 `2>/dev/null`）。
   **原因**：`2>/dev/null` 只藏住报错信息，`set -e`/`pipefail` 仍会让整个脚本在算版本号那步中止，`swift build` 根本不执行，dist 静默保留旧二进制。
@@ -13,7 +17,7 @@
   **原因**：管道吞退出码会导致"以为打包了、其实没打包"，运行的是旧版本，下游所有"验证"全是假的。
 
 - **情况**：`Import Finder Windows` 走 AppleScript 控制 Finder（Apple Events 自动化）。
-  **要求**：`build-app.sh` 必须 `codesign --force --deep --sign - "$APP_DIR"` 给 .app 做 ad-hoc 签名（已加）。
+  **要求**：`build-app.sh` 必须给 .app 签名;本地测试默认 ad-hoc,正式包用 Developer ID 并启用 Apple Events entitlement,发布脚本不得覆盖为 ad-hoc。
   **原因**：**未签名**的 app 无法被授予 Apple Events 自动化权限，macOS 会直接拒绝（或根本不弹授权框），导入静默失败。ad-hoc 签名后才会弹"XFinder 想控制 Finder"，授权后才生效；每次重新打包 cdhash 变，会重新弹一次，属正常。
 
 - **情况**：判断改动是否真的生效。

@@ -6,3 +6,6 @@ release/
 *.swp
 *.tmp
 AI_CONTEXT.md
+*.p12
+*.p8
+*.certSigningRequest

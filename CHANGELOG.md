@@ -4,6 +4,9 @@ Key user-visible changes to XFinder. Newest first.
 
 ## [Unreleased]
 
+### Added
+- Local releases support Developer ID signing and Apple notarization, including offline ticket stapling.
+
 ## [0.6.0] — Network Status Center
 
 ### Added

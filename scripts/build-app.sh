@@ -83,6 +83,12 @@ PLIST
 # Ad-hoc sign so macOS will grant Apple Events automation (Import Finder
 # Windows) and per-folder privacy access. An UNSIGNED app cannot be granted
 # automation permission, so Finder import silently fails without this.
-codesign --force --deep --sign - "$APP_DIR"
+if [[ -n "${XFINDER_SIGNING_IDENTITY:-}" ]]; then
+    codesign --force --options runtime --timestamp \
+        --entitlements "$ROOT_DIR/Config/XFinder.entitlements" \
+        --sign "$XFINDER_SIGNING_IDENTITY" "$APP_DIR"
+else
+    codesign --force --deep --sign - "$APP_DIR"
+fi
 
 echo "Built $APP_DIR"

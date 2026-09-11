@@ -67,11 +67,23 @@ swift test                     # run the test suite
 
 `scripts/release.sh` builds, ad-hoc signs, zips, and writes a SHA-256 checksum into `release/`; `.github/workflows/release.yml` publishes a GitHub Release on a `v*` tag. Download `XFinder-*-macOS-*.zip` from Releases, unzip, and move `XFinder.app` to `/Applications`.
 
-Test builds are **ad-hoc signed**, so on first launch macOS may block the app — right-click `XFinder.app` → **Open** → confirm. Public distribution still needs Developer ID signing + Apple notarization.
+Test builds are **ad-hoc signed**, so on first launch macOS may block the app — right-click `XFinder.app` → **Open** → confirm. The GitHub workflow currently publishes test builds; it does not have access to your local signing keychain.
+
+For a local notarized release, install a Developer ID Application identity with its private key and Apple intermediate certificate, then store notarization credentials with `xcrun notarytool store-credentials XFinder-notary`. Run:
+
+```bash
+XFINDER_VERSION=0.5.1 \
+XFINDER_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAM_ID)" \
+XFINDER_NOTARY_PROFILE=XFinder-notary ./scripts/release.sh
+```
+
+The script enables Hardened Runtime with Apple Events permission, signs with a secure timestamp, submits to Apple, staples and verifies the ticket, and only then creates the final ZIP and checksum. Submission results are in `dist/notarization-result.json`; use its submission ID with `xcrun notarytool log` for failures. Certificates' private keys and notarization credentials belong in Keychain or CI secrets, never Git. Keep the bundle identifier stable across updates.
+
+The wait is limited to five minutes; Apple continues processing after a timeout. Keep `dist/XFinder.app` unchanged and rerun the same release command with `XFINDER_NOTARY_RESUME_ID=<submission-id>` to finish without rebuilding or uploading again. The submission ID is printed and stored in `dist/notarization-submission.json`.
 
 ### Limitations
 
-- Not Developer ID signed or notarized yet; packaged build targets Apple Silicon.
+- GitHub test builds remain ad-hoc signed; local Developer ID notarization is available. Packaged build targets Apple Silicon.
 - Not full Finder parity (no tags, smart folders, server browsing, rich metadata editing).
 - Automated tests cover pure / file-operation / git-parsing logic; GUI behavior is verified manually.
 
@@ -142,11 +154,11 @@ swift test                     # 运行测试
 
 `scripts/release.sh` 会构建、ad-hoc 签名、打包并生成 SHA-256 校验文件到 `release/`;推送 `v*` tag 时 `.github/workflows/release.yml` 自动创建 GitHub Release。从 Releases 下载 `XFinder-*-macOS-*.zip`,解压后把 `XFinder.app` 移到 `/Applications`。
 
-测试版本为 **ad-hoc 签名**,首次打开 macOS 可能拦截——右键 `XFinder.app` → **打开** → 确认。正式公开分发仍需 Developer ID 签名 + Apple 公证。
+测试版本为 **ad-hoc 签名**,首次打开 macOS 可能拦截——右键 `XFinder.app` → **打开** → 确认。本地正式发布可使用上方 Distribution 中的命令配置 Developer ID 签名与 Apple 公证;脚本通过公证、票据装订及 Gatekeeper 检查后才生成最终 ZIP。GitHub runner 尚未配置签名凭据,仍发布测试版本。
 
 ### 局限
 
-- 尚未 Developer ID 签名与公证;打包版本面向 Apple Silicon。
+- GitHub 测试版本仍为 ad-hoc 签名;本地支持 Developer ID 签名及公证。打包版本面向 Apple Silicon。
 - 不追求完整 Finder 对齐(无标签、智能文件夹、服务器浏览、丰富元数据编辑)。
 - 自动化测试覆盖纯逻辑 / 文件操作 / git 解析;GUI 行为人工验证。
 
