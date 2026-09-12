@@ -125,3 +125,54 @@ import Testing
     #expect(store.events.count == 200)
     #expect(store.events.first?.message == "event 249")
 }
+
+// MARK: - Release version parsing
+
+@Test func versionComponentsStripPrefixAndDescribeSuffix() {
+    #expect(ReleaseInfoParsing.components(of: "v0.6.2") == [0, 6, 2])
+    #expect(ReleaseInfoParsing.components(of: "0.6.2-3-gabc123-dirty") == [0, 6, 2])
+    #expect(ReleaseInfoParsing.components(of: "1.2") == [1, 2])
+}
+
+@Test func isNewerComparesComponentWise() {
+    #expect(ReleaseInfoParsing.isNewer(remote: "v0.7.0", than: "0.6.2"))
+    #expect(!ReleaseInfoParsing.isNewer(remote: "v0.6.2", than: "0.6.2"))
+    #expect(!ReleaseInfoParsing.isNewer(remote: "v0.6.1", than: "0.6.2"))
+    // A local dev build just past the latest tag is not "outdated".
+    #expect(!ReleaseInfoParsing.isNewer(remote: "v0.6.2", than: "0.6.2-3-gabc123"))
+    #expect(ReleaseInfoParsing.isNewer(remote: "v0.6.10", than: "0.6.2"))
+}
+
+@Test func latestReleaseParsesGitHubResponse() {
+    let json = #"{"tag_name": "v0.7.0", "html_url": "https://github.com/tangsanxiao/XFinder/releases/tag/v0.7.0"}"#
+    let release = ReleaseInfoParsing.latestRelease(fromData: Data(json.utf8))
+    #expect(release?.tag == "v0.7.0")
+    #expect(release?.url?.absoluteString == "https://github.com/tangsanxiao/XFinder/releases/tag/v0.7.0")
+    #expect(ReleaseInfoParsing.latestRelease(fromData: Data("{}".utf8)) == nil)
+    #expect(ReleaseInfoParsing.latestRelease(fromData: Data("not json".utf8)) == nil)
+}
+
+// MARK: - Disk capacity
+
+@Test func diskCapacityComputesUsedAndFraction() {
+    let disk = DiskCapacity(volumeName: "Macintosh HD", totalBytes: 500, availableBytes: 200)
+    #expect(disk.usedBytes == 300)
+    #expect(disk.usedFraction == 0.6)
+}
+
+@Test func diskCapacityClampsDegenerateValues() {
+    let zero = DiskCapacity(volumeName: "v", totalBytes: 0, availableBytes: 0)
+    #expect(zero.usedFraction == 0)
+    // Available beyond total (over-reported purgeable) never yields negatives.
+    let over = DiskCapacity(volumeName: "v", totalBytes: 100, availableBytes: 150)
+    #expect(over.usedBytes == 0)
+    #expect(over.usedFraction == 0)
+}
+
+@Test func diskCapacityProbeReadsSystemVolume() {
+    let disk = DiskCapacityProbe.systemVolume()
+    #expect(disk != nil)
+    #expect((disk?.totalBytes ?? 0) > 0)
+    #expect((disk?.availableBytes ?? -1) >= 0)
+    #expect(disk?.volumeName.isEmpty == false)
+}

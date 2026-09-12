@@ -4,6 +4,16 @@ Key user-visible changes to XFinder. Newest first.
 
 ## [Unreleased]
 
+### Added
+- Token Usage panel (sidebar chart icon): offline token statistics from local AI tool logs — Claude Code, Codex, Kimi Code, Grok, GLM/ZCode, plus Cursor/Antigravity (via tokscale caches), GitHub Copilot (VS Code sessions / OTel), and OpenCode (JSON/SQLite).
+- Today / 7-day / 30-day totals with input/output/cache-hit breakdowns, per-tool and per-model cards, a stacked 30-day daily trend chart, and top-session ranking with deep links into Session Center.
+- Codex quota window (usage %, window, reset time, plan) read from local session logs without any network request.
+- Grok credit quota (usage %, weekly window, reset time, subscription tier) read from local logs.
+- Optional cost estimates from a built-in static USD price list (labelled as estimates); configurable history retention and opt-in auto-refresh in Settings.
+- Settings → About shows the app version and build number with a user-initiated Check for Updates (GitHub latest release).
+- Settings → Storage shows the system volume's total/used/available capacity with a progress bar (Finder's available-space convention).
+- Each file pane's new status bar shows the top-level item count and the directory's recursive on-disk size, computed in the background with cancellation.
+
 ## [0.6.2] — Toolbar Cleanup
 
 ### Changed

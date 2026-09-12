@@ -42,6 +42,12 @@ struct FeatureOverviewSheet: View {
                         en:
                             "Check endpoint reachability, latency, stability, and egress details, with on-demand bandwidth tests."
                     )
+                    feature(
+                        "Token 用量", "Token Usage", icon: "chart.bar",
+                        zh: "离线统计本机各 AI 工具的 token 用量、缓存命中率与估算成本，并展示 Codex 配额。",
+                        en:
+                            "Offline token usage, cache hit rates, and estimated costs across local AI tools, plus Codex quota."
+                    )
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)

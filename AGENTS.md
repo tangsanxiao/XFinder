@@ -155,6 +155,10 @@
   **要求**:双击打开必须用行级 `highPriorityGesture` 统一处理,不能让子视图单击手势与双击并列竞争;列表、图标、分栏三种视图要同步修改和验证。
   **原因**:子视图可能先消费点击序列,在视频较多、图标加载或视图更新频繁的目录中会表现为双击偶发不打开。
 
+- **情况**:Token 用量面板要统计各工具的会话日志,文件可能累计数 GB。
+  **要求**:全部走 `TokenUsageScanner` 的共享 ledger(`usage-ledger.json`):append-only JSONL 按字节偏移增量读取,whole-file 来源(JSON 导出/SQLite/snapshot+patch)整文件重读并**替换**该文件贡献,禁止合并导致重复计数;文件被工具清理后保留已记录贡献;只解析 usage/rate-limit 行,不提取消息正文,不发起网络请求;新增工具时先在 `UsageTool` 注册 roots/过滤/策略,解析写成 `UsageLineParsing`/`UsageToolParsers` 纯函数并配 fixture 测试;成本只按 `ModelPricing` 内置价目表估算,UI 必须标注"≈ 估算"。
+  **原因**:全量重读数 GB 日志会拖垮首次及每次刷新;累计快照与增量口径混淆会静默重复计数。
+
 ## 通用
 
 - **要求**：用户可感知的操作结果一律走 `store.statusMessage` / `store.lastError`，不要 print 或静默吞掉。这两个属性保留有界内部事件记录;右上角操作与错误记录入口已移除,新增功能不要重新引入该按钮、红点或 tooltip。

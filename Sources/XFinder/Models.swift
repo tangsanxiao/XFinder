@@ -112,6 +112,8 @@ struct AppSettings: Codable, Equatable {
     var doubaoTTS = DoubaoTTSConfig()
     /// Network Diagnostics custom endpoints and bounded monitoring cadence.
     var networkDiagnostics = NetworkDiagnosticsConfig()
+    /// Token Usage panel: retention window and opt-in auto-refresh.
+    var tokenUsage = TokenUsageConfig()
 
     private enum CodingKeys: String, CodingKey {
         case claudeIntegrationEnabled
@@ -123,6 +125,7 @@ struct AppSettings: Codable, Equatable {
         case summaryLLM
         case doubaoTTS
         case networkDiagnostics
+        case tokenUsage
     }
 
     init() {}
@@ -141,6 +144,8 @@ struct AppSettings: Codable, Equatable {
         networkDiagnostics =
             try container.decodeIfPresent(NetworkDiagnosticsConfig.self, forKey: .networkDiagnostics)
             ?? NetworkDiagnosticsConfig()
+        tokenUsage =
+            try container.decodeIfPresent(TokenUsageConfig.self, forKey: .tokenUsage) ?? TokenUsageConfig()
     }
 }
 
@@ -173,6 +178,17 @@ struct DoubaoTTSConfig: Codable, Equatable, Sendable {
             && !resourceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !voiceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+}
+
+/// Token Usage panel behaviour. All stats come from local logs; there is no
+/// network source, so nothing here holds credentials.
+struct TokenUsageConfig: Codable, Equatable, Sendable {
+    /// Days of per-day usage kept in the ledger (oldest buckets are pruned).
+    var retentionDays = 370
+    /// Opt-in periodic rescan, only while the panel is visible (clamped 1…30).
+    var autoRefreshEnabled = false
+    var autoRefreshMinutes = 5
+    var showsCostEstimate = true
 }
 
 /// Coarse, rule-based file classification (no LLM) for the pane's category

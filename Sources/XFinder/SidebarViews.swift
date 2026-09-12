@@ -54,6 +54,7 @@ struct SidebarView: View {
                 store.activePanel = .network
             } label: {
                 Image(systemName: "network")
+                    .font(.system(size: 14))
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
@@ -62,9 +63,22 @@ struct SidebarView: View {
             .helpTip(store.loc("网络状态", "Network Status"))
 
             Button {
+                store.activePanel = .usage
+            } label: {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.system(size: 14))
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(store.activePanel == .usage ? Color.accentColor : Color.secondary)
+            .helpTip(store.loc("Token 用量", "Token Usage"))
+
+            Button {
                 store.isSettingsPresented = true
             } label: {
                 Image(systemName: "gearshape")
+                    .font(.system(size: 14))
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }

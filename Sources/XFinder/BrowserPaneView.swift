@@ -49,6 +49,10 @@ struct BrowserPane: View {
     @State private var keyMonitor: Any?
     @State private var hostingWindowNumber: Int?
     @State private var scheduledReloadTask: Task<Void, Never>?
+    /// Recursive size of the current directory for the status bar; nil while
+    /// computing or when the walk was cancelled/failed.
+    @State private var directorySizeBytes: Int64?
+    @State private var directorySizeTask: Task<Void, Never>?
     @State private var gitSnapshot: GitDirectorySnapshot?
     @State private var showsProjectCard = false
     @State private var showsAnalysis = false
@@ -121,6 +125,8 @@ struct BrowserPane: View {
                         onFocus()
                         goUp()
                     }
+                Divider()
+                statusBar
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
@@ -146,6 +152,8 @@ struct BrowserPane: View {
             keyMonitor = nil
             scheduledReloadTask?.cancel()
             scheduledReloadTask = nil
+            directorySizeTask?.cancel()
+            directorySizeTask = nil
         }
         .sheet(isPresented: $showsGoToPath) {
             goToPathSheet
@@ -456,6 +464,44 @@ struct BrowserPane: View {
             .frame(height: 28)
             .background(Color(nsColor: .controlBackgroundColor))
             Divider()
+        }
+    }
+
+    /// Bottom strip: top-level item count plus the recursive on-disk size of
+    /// the current directory (spinner while the background walk runs).
+    private var statusBar: some View {
+        HStack(spacing: 6) {
+            Text(store.loc("\(items.count) 项", "\(items.count) items"))
+            if let directorySizeBytes {
+                Text("·")
+                Text(store.loc("共 ", "Total ") + DisplayFormatters.compactSize(directorySizeBytes))
+            } else if directorySizeTask != nil {
+                ProgressView()
+                    .controlSize(.mini)
+                Text(store.loc("正在计算大小", "Calculating size"))
+            }
+            Spacer()
+        }
+        .font(.system(size: 10))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .frame(height: 22)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    /// Restarts the recursive size walk for the current directory; a previous
+    /// walk still running for a superseded directory is cancelled. @State
+    /// reads inside the task stay live, so a stale result is dropped when the
+    /// pane has already navigated elsewhere.
+    private func refreshDirectorySize() {
+        directorySizeTask?.cancel()
+        let url = currentURL
+        directorySizeBytes = nil
+        directorySizeTask = Task { @MainActor in
+            defer { directorySizeTask = nil }
+            let size = await DirectorySizeService.recursiveAllocatedSize(of: url)
+            guard !Task.isCancelled, url == currentURL else { return }
+            directorySizeBytes = size
         }
     }
 
@@ -1657,6 +1703,7 @@ struct BrowserPane: View {
             clearRenameState()
             errorMessage = nil
             applyPostNavigationSelection()
+            refreshDirectorySize()
             await refreshGitSnapshot(generation: generation)
         } catch {
             guard generation == loadGeneration else { return }
@@ -1721,6 +1768,7 @@ struct BrowserPane: View {
                 pendingSelectionURL = nil
             }
             errorMessage = nil
+            refreshDirectorySize()
             await refreshGitSnapshot(generation: generation)
         } catch {
             guard generation == loadGeneration else { return }

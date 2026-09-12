@@ -5,6 +5,15 @@ struct SettingsView: View {
     @EnvironmentObject private var store: WorkspaceStore
     let onClose: () -> Void
     @State private var showsFeatureOverview = false
+    @State private var updateCheckInFlight = false
+    @State private var updateCheckResult: UpdateCheckResult?
+    @State private var diskCapacity: DiskCapacity?
+
+    private enum UpdateCheckResult {
+        case upToDate
+        case available(ReleaseInfoParsing.Release)
+        case failed
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -27,9 +36,13 @@ struct SettingsView: View {
                     Divider()
                     skillsSection
                     Divider()
+                    tokenUsageSection
+                    Divider()
                     summaryLLMSection
                     Divider()
                     debugSection
+                    Divider()
+                    storageSection
                     Divider()
                     aboutSection
                 }
@@ -131,6 +144,54 @@ struct SettingsView: View {
         Binding(get: { store.settings.skillLibraryPath }, set: { store.settings.skillLibraryPath = $0 })
     }
 
+    private var tokenUsageSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(store.loc("Token 用量", "Token Usage"))
+                .font(.system(size: 13, weight: .semibold))
+            Stepper(
+                store.loc(
+                    "历史保留 \(store.settings.tokenUsage.retentionDays) 天",
+                    "Keep \(store.settings.tokenUsage.retentionDays) days of history"),
+                value: retentionDaysBinding,
+                in: 30...370,
+                step: 30
+            )
+            Toggle(isOn: autoRefreshBinding) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.loc("面板打开时自动刷新", "Auto-refresh while the panel is open"))
+                    Text(
+                        store.loc(
+                            "间隔 1–30 分钟；仅读取各工具日志的新增部分。默认关闭。",
+                            "Every 1–30 minutes; only newly appended log bytes are read. Off by default."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            if store.settings.tokenUsage.autoRefreshEnabled {
+                Stepper(
+                    store.loc(
+                        "每 \(store.settings.tokenUsage.autoRefreshMinutes) 分钟",
+                        "Every \(store.settings.tokenUsage.autoRefreshMinutes) minutes"),
+                    value: autoRefreshMinutesBinding,
+                    in: 1...30
+                )
+            }
+            Toggle(isOn: costEstimateBinding) {
+                Text(store.loc("显示成本估算", "Show cost estimates"))
+            }
+            Text(
+                store.loc(
+                    "统计只读本地日志，不联网；成本按内置价目表估算。",
+                    "Usage is read from local logs only, with no network access; costs are estimated from a built-in price list."
+                )
+            )
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+        }
+    }
+
     private var summaryLLMSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(store.loc("会话总结 LLM", "Session summary LLM"))
@@ -225,6 +286,56 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(store.loc("关于", "About"))
                 .font(.system(size: 13, weight: .semibold))
+            HStack(spacing: 10) {
+                Text(
+                    store.loc(
+                        "版本 \(AppVersionInfo.marketing)（构建 \(AppVersionInfo.build)）",
+                        "Version \(AppVersionInfo.marketing) (build \(AppVersionInfo.build))")
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                Button {
+                    checkForUpdates()
+                } label: {
+                    if updateCheckInFlight {
+                        ProgressView()
+                            .controlSize(.mini)
+                    } else {
+                        Text(store.loc("检查更新", "Check for Updates"))
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(updateCheckInFlight)
+            }
+            switch updateCheckResult {
+            case .none:
+                EmptyView()
+            case .upToDate:
+                Label(store.loc("已是最新版本", "You're up to date"), systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            case .available(let release):
+                HStack(spacing: 6) {
+                    Label(
+                        store.loc("发现新版本 \(release.tag)", "New version \(release.tag) available"),
+                        systemImage: "arrow.down.circle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                    if let url = release.url {
+                        Link(store.loc("查看", "View"), destination: url)
+                    }
+                }
+                .font(.caption)
+            case .failed:
+                Label(
+                    store.loc("检查失败，请稍后重试", "Check failed; try again later"),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.red)
+            }
             Button {
                 showsFeatureOverview = true
             } label: {
@@ -237,12 +348,92 @@ struct SettingsView: View {
         }
     }
 
+    private var storageSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(store.loc("存储", "Storage"))
+                .font(.system(size: 13, weight: .semibold))
+            if let disk = diskCapacity {
+                HStack {
+                    Label(disk.volumeName, systemImage: "internaldrive")
+                        .font(.system(size: 12, weight: .medium))
+                    Spacer()
+                    Text(store.loc("已用 ", "Used ") + String(format: "%.0f%%", disk.usedFraction * 100))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ProgressView(value: disk.usedFraction)
+                    .progressViewStyle(.linear)
+                HStack(spacing: 12) {
+                    Text(store.loc("共 ", "Total ") + DisplayFormatters.compactSize(disk.totalBytes))
+                    Text(store.loc("已用 ", "Used ") + DisplayFormatters.compactSize(disk.usedBytes))
+                    Text(store.loc("可用 ", "Available ") + DisplayFormatters.compactSize(disk.availableBytes))
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Text(
+                    store.loc(
+                        "可用空间包含可清除数据，与 Finder 显示的口径一致。",
+                        "Available space includes purgeable data, matching what Finder reports."
+                    )
+                )
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            } else {
+                Text(store.loc("无法读取磁盘容量", "Could not read disk capacity"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onAppear {
+            // Single cheap resource-values read when the panel opens; no polling.
+            if diskCapacity == nil {
+                diskCapacity = DiskCapacityProbe.systemVolume()
+            }
+        }
+    }
+
+    private func checkForUpdates() {
+        updateCheckInFlight = true
+        updateCheckResult = nil
+        Task {
+            defer { updateCheckInFlight = false }
+            do {
+                let release = try await UpdateChecker.fetchLatestRelease()
+                updateCheckResult =
+                    ReleaseInfoParsing.isNewer(remote: release.tag, than: AppVersionInfo.marketing)
+                    ? .available(release)
+                    : .upToDate
+            } catch {
+                updateCheckResult = .failed
+            }
+        }
+    }
+
     private var languageBinding: Binding<AppLanguage> {
         Binding(get: { store.settings.language }, set: { store.settings.language = $0 })
     }
 
     private var debugBinding: Binding<Bool> {
         Binding(get: { store.settings.debugModeEnabled }, set: { store.settings.debugModeEnabled = $0 })
+    }
+
+    private var retentionDaysBinding: Binding<Int> {
+        Binding(get: { store.settings.tokenUsage.retentionDays }, set: { store.settings.tokenUsage.retentionDays = $0 })
+    }
+    private var autoRefreshBinding: Binding<Bool> {
+        Binding(
+            get: { store.settings.tokenUsage.autoRefreshEnabled },
+            set: { store.settings.tokenUsage.autoRefreshEnabled = $0 })
+    }
+    private var autoRefreshMinutesBinding: Binding<Int> {
+        Binding(
+            get: { store.settings.tokenUsage.autoRefreshMinutes },
+            set: { store.settings.tokenUsage.autoRefreshMinutes = $0 })
+    }
+    private var costEstimateBinding: Binding<Bool> {
+        Binding(
+            get: { store.settings.tokenUsage.showsCostEstimate },
+            set: { store.settings.tokenUsage.showsCostEstimate = $0 })
     }
 
 }

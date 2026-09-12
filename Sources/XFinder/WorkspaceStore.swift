@@ -53,7 +53,7 @@ final class WorkspaceStore: ObservableObject {
     /// Which top-level panel the content area shows.
     @Published var activePanel: ActivePanel = .files
 
-    enum ActivePanel { case files, skills, agent, network }
+    enum ActivePanel { case files, skills, agent, network, usage }
 
     @Published private(set) var agentInboxProjects: [AgentInboxProject] = []
     @Published private(set) var agentInboxIsRefreshing = false

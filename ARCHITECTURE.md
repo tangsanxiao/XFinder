@@ -139,6 +139,29 @@ permissions, access flags). `QuickLookController` delegates to the system
   rows×columns; both the rendered grid and the Layout control's live
   description read it, so they cannot disagree.
 
+## Token usage
+
+- `TokenUsageScanner` reads local AI-tool logs into a persisted ledger
+  (`usage-ledger.json`). Append-only JSONL (Claude, Codex, Kimi Code, Grok,
+  GLM/ZCode, Copilot OTel, Antigravity's tokscale cache) is consumed
+  incrementally from each file's last byte offset; whole-document sources
+  (Cursor's tokscale export, OpenCode JSON/SQLite, VS Code Copilot
+  snapshot+patch sessions, legacy Kimi CLI cumulative snapshots) are re-read
+  whole and their contribution replaced, never merged. A file that shrank is
+  rescanned from zero; deleted files keep their recorded contribution so each
+  tool's own retention cleanup cannot erase observed history.
+- `UsageLineParsing` / `UsageToolParsers` are pure per-schema parsers with
+  swift-testing coverage; only usage/rate-limit lines are parsed — message
+  bodies are never extracted, and scanning performs no network IO.
+- `TokenUsageController` follows the NetworkDiagnostics lifecycle: the panel's
+  onAppear/onDisappear activate/deactivate it, so nothing scans while the
+  panel is hidden. Auto-refresh is opt-in, clamped to 1–30 minutes, and runs
+  only while visible.
+- Costs come from `ModelPricing`, a static built-in USD price list; the UI
+  labels every cost as an estimate. Codex rate-limit windows are read from the
+  local session logs, not from an API.
+- `Doubao` has no local log source and is intentionally not scanned.
+
 ## In-app self-inspection
 
 - `FeatureOverviewSheet` provides a static bilingual feature summary and repository link from Settings. It performs no file or network IO. The toolbar no longer exposes Activity & Errors; `AppInfoViews` retains its legacy renderers.
@@ -167,6 +190,9 @@ permissions, access flags). `QuickLookController` delegates to the system
   same Application Support directory.
 - Session list metadata → `session-catalog.json` in the same directory; this is
   a rebuildable local cache and never contains full transcript bodies.
+- Token usage totals → `usage-ledger.json` in the same directory: per-file byte
+  offsets plus per-day/per-model token buckets and the latest observed Codex
+  rate-limit snapshot. No message content is stored.
 - `dist/`, `release/`, `.build/`, and `AI_CONTEXT.md` are gitignored.
 - Third-party license texts are tracked under `ThirdPartyLicenses/` and copied
   into packaged apps with `THIRD_PARTY_NOTICES.md`.

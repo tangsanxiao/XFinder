@@ -36,6 +36,12 @@ enum DisplayFormatters {
         }
     }
 
+    /// Byte count without the parenthesized raw count — for capacity readouts
+    /// (Settings storage section) where `size(_:)`'s "x bytes" suffix is noise.
+    static func compactSize(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .none
@@ -49,4 +55,12 @@ enum DisplayFormatters {
         formatter.timeStyle = .short
         return formatter
     }()
+
+    /// "yyyy-MM-dd" day key → "M/d" axis label (usage trend chart). Returns the
+    /// key unchanged when it does not have the expected shape.
+    static func shortDay(_ dayKey: String) -> String {
+        let parts = dayKey.split(separator: "-")
+        guard parts.count == 3, let month = Int(parts[1]), let day = Int(parts[2]) else { return dayKey }
+        return "\(month)/\(day)"
+    }
 }

@@ -72,3 +72,14 @@ private func format(_ date: Date?) -> String {
     #expect(!DisplayFormatters.size(0).isEmpty)
     #expect(DisplayFormatters.size(0) != "--")
 }
+
+// MARK: - Day-key axis labels
+
+@Test func shortDayFormatsDayKey() {
+    #expect(DisplayFormatters.shortDay("2026-09-12") == "9/12")
+    #expect(DisplayFormatters.shortDay("2026-12-01") == "12/1")
+}
+
+@Test func shortDayKeepsMalformedKey() {
+    #expect(DisplayFormatters.shortDay("unknown") == "unknown")
+}

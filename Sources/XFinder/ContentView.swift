@@ -4,6 +4,7 @@ struct ContentView: View {
     @EnvironmentObject private var store: WorkspaceStore
     @StateObject private var tooltip = TooltipCenter()
     @StateObject private var networkDiagnostics = NetworkDiagnosticsController()
+    @StateObject private var tokenUsage = TokenUsageController()
     @State private var paneViewModes: [UUID: BrowserViewMode] = [:]
     @State private var isSidebarVisible = true
 
@@ -36,6 +37,8 @@ struct ContentView: View {
                 }
             case .network:
                 NetworkStatusView(controller: networkDiagnostics, isSidebarVisible: isSidebarVisible)
+            case .usage:
+                TokenUsageView(controller: tokenUsage, isSidebarVisible: isSidebarVisible)
             case .files:
                 WorkspaceDetailView(
                     focusedDirectoryID: focusedDirectoryID,

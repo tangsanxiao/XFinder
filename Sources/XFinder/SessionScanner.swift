@@ -73,6 +73,15 @@ actor SessionCatalog {
     func metrics() -> SessionCatalogMetrics {
         latestMetrics
     }
+
+    /// Summaries already in memory or in the persisted disk cache, without
+    /// touching the filesystem beyond one cache-file read — for panels that
+    /// only need list metadata (e.g. session titles) and must not trigger a
+    /// full scan.
+    func cachedSessions() -> [SessionSummary]? {
+        if let summaries { return summaries }
+        return SessionScanner.cachedSummaries(cacheURL: cacheURL)
+    }
 }
 
 /// Scans each agent's session stores into a unified catalog. The list pass is
@@ -370,6 +379,12 @@ enum SessionScanner {
             cache.version == SessionCatalogCache.currentVersion
         else { return nil }
         return cache
+    }
+
+    /// Summaries from the persisted cache only (no scan); nil when no usable
+    /// cache exists yet.
+    static func cachedSummaries(cacheURL: URL?) -> [SessionSummary]? {
+        loadCache(at: cacheURL)?.entries.values.map(\.summary)
     }
 
     private static func saveCache(_ cache: SessionCatalogCache, at url: URL) {
