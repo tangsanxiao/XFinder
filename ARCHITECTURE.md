@@ -139,6 +139,21 @@ permissions, access flags). `QuickLookController` delegates to the system
   rows×columns; both the rendered grid and the Layout control's live
   description read it, so they cannot disagree.
 
+## Network status & proxy usage
+
+- The Network Status panel (`NetworkStatusView` + `NetworkDiagnosticsController`)
+  probes endpoints on demand, detects VPN/system-proxy overlays, samples live
+  interface rates, and runs `networkQuality` speed tests only on confirmation.
+- `ProxyUsageService` is read-only and offline by default: Shadowrocket's
+  cumulative counters come from its local `NetworkUsage` keyed archive, the
+  subscription URL is recovered from `ServerManager`, and active tunnel byte
+  counters (OpenVPN and other VPN clients) come from `netstat -ib`. The
+  provider quota (`subscription-userinfo` header) is fetched only when the
+  user taps "Check Plan Usage"; the URL is never sent anywhere else or logged.
+  Shadowrocket's container format is private, so all parsing degrades to nil.
+- `ProxyUsageParsing` holds the pure parsers (keyed archive, header, URL scan,
+  netstat) with swift-testing fixtures.
+
 ## Token usage
 
 - `TokenUsageScanner` reads local AI-tool logs into a persisted ledger

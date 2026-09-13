@@ -8,6 +8,17 @@ struct NetworkStatusView: View {
     @State private var showsAddTarget = false
     @State private var showsSpeedConfirmation = false
 
+    // Proxy/tunnel usage section state (local reads once per panel visit;
+    // the provider quota is fetched only when the user taps the button).
+    @State private var proxySnapshotLoaded = false
+    @State private var shadowrocketInstalled = false
+    @State private var shadowrocketUsage: ShadowrocketUsage?
+    @State private var subscriptionURL: URL?
+    @State private var tunnelInterfaces: [TunnelInterface] = []
+    @State private var subscriptionLoading = false
+    @State private var subscriptionUsage: SubscriptionUsage?
+    @State private var subscriptionFailed = false
+
     private var targets: [NetworkProbeTarget] {
         NetworkProbeTarget.builtIn
             + store.settings.networkDiagnostics.customTargets.compactMap(NetworkProbeTarget.custom)
@@ -20,6 +31,7 @@ struct NetworkStatusView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     overview
+                    proxyUsageSection
                     nodeSection
                     speedTestSection
                 }
@@ -34,6 +46,7 @@ struct NetworkStatusView: View {
             }
         }
         .onDisappear { controller.deactivate() }
+        .task { await loadProxySnapshot() }
         .onChange(of: controller.notice) { newNotice in
             guard let newNotice else { return }
             let message = store.loc(newNotice.zh, newNotice.en)
@@ -217,6 +230,195 @@ struct NetworkStatusView: View {
                 Text(store.loc("物理网卡实时流量，不等于可用带宽", "Physical-interface traffic, not available capacity"))
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    // MARK: - Proxy & tunnel usage
+
+    private var proxyUsageSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(store.loc("代理与隧道用量", "Proxy & Tunnel Usage"))
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text(store.loc("只读本地数据；订阅查询仅在点击时联网", "Local read-only; quota lookup goes online only on tap"))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                shadowrocketCard
+                tunnelsCard
+            }
+        }
+    }
+
+    private var shadowrocketCard: some View {
+        NetworkSummaryCard(title: "Shadowrocket", systemImage: "paperplane") {
+            if !shadowrocketInstalled {
+                Text(store.loc("未检测到 Shadowrocket 数据", "No Shadowrocket data found"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let usage = shadowrocketUsage {
+                        HStack(spacing: 12) {
+                            proxyDirection(store.loc("代理 ↓ ", "Proxy ↓ "), value: usage.proxyInBytes, color: .orange)
+                            proxyDirection(store.loc("直连 ↓ ", "Direct ↓ "), value: usage.directInBytes, color: .blue)
+                        }
+                        HStack(spacing: 12) {
+                            proxyDirection(store.loc("代理 ↑ ", "Proxy ↑ "), value: usage.proxyOutBytes, color: .orange)
+                            proxyDirection(store.loc("直连 ↑ ", "Direct ↑ "), value: usage.directOutBytes, color: .blue)
+                        }
+                        if let share = usage.directRequestShare {
+                            Text(
+                                store.loc(
+                                    "直连请求占比 \(String(format: "%.0f%%", share * 100))",
+                                    "\(String(format: "%.0f%%", share * 100)) of requests go direct")
+                            )
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                        }
+                    } else {
+                        Text(store.loc("暂无法读取本地计数", "Local counters unavailable"))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    subscriptionBlock
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var subscriptionBlock: some View {
+        Divider()
+        if let subscriptionUsage {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    ProgressView(value: subscriptionUsage.usedFraction ?? 0)
+                        .progressViewStyle(.linear)
+                    Text(String(format: "%.0f%%", (subscriptionUsage.usedFraction ?? 0) * 100))
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                }
+                Text(
+                    store.loc(
+                        "已用 \(DisplayFormatters.compactSize(subscriptionUsage.usedBytes)) / \(DisplayFormatters.compactSize(subscriptionUsage.totalBytes))",
+                        "Used \(DisplayFormatters.compactSize(subscriptionUsage.usedBytes)) of \(DisplayFormatters.compactSize(subscriptionUsage.totalBytes))"
+                    )
+                )
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                if let expiresAt = subscriptionUsage.expiresAt {
+                    Text(store.loc("订阅到期：", "Subscription expires: ") + DisplayFormatters.date(expiresAt))
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        } else if subscriptionURL == nil {
+            Text(store.loc("未找到订阅地址，无法查询套餐用量", "No subscription URL found; quota lookup unavailable"))
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+        } else {
+            HStack(spacing: 8) {
+                Button {
+                    querySubscriptionUsage()
+                } label: {
+                    if subscriptionLoading {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Text(store.loc("查询套餐用量", "Check Plan Usage"))
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(subscriptionLoading)
+                if subscriptionFailed {
+                    Text(store.loc("查询失败", "Lookup failed"))
+                        .font(.system(size: 9))
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    private func proxyDirection(_ title: String, value: Int64, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 9))
+                .foregroundStyle(color)
+            Text(DisplayFormatters.compactSize(value))
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var tunnelsCard: some View {
+        NetworkSummaryCard(title: store.loc("活动隧道接口", "Active Tunnels"), systemImage: "lock.shield") {
+            if tunnelInterfaces.isEmpty {
+                Text(store.loc("当前没有传输流量的隧道接口", "No tunnel interfaces carrying traffic"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(tunnelInterfaces.prefix(4)) { tunnel in
+                        HStack(spacing: 6) {
+                            Text(tunnel.name)
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            if let address = tunnel.address {
+                                Text(address)
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Text(
+                                "↓\(DisplayFormatters.compactSize(tunnel.bytesIn)) ↑\(DisplayFormatters.compactSize(tunnel.bytesOut))"
+                            )
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    Text(
+                        store.loc(
+                            "计数自各隧道建立起累计（OpenVPN 等）", "Counters accumulate since each tunnel came up (OpenVPN, etc.)")
+                    )
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+
+    /// One background read of local files + interface counters per visit;
+    /// no polling, no network.
+    private func loadProxySnapshot() async {
+        guard !proxySnapshotLoaded else { return }
+        proxySnapshotLoaded = true
+        let snapshot = await Task.detached(priority: .utility) {
+            (
+                installed: ProxyUsageService.isShadowrocketInstalled,
+                usage: ProxyUsageService.shadowrocketUsage(),
+                subscriptionURL: ProxyUsageService.shadowrocketSubscriptionURL(),
+                tunnels: ProxyUsageService.tunnelInterfaces()
+            )
+        }.value
+        shadowrocketInstalled = snapshot.installed
+        shadowrocketUsage = snapshot.usage
+        subscriptionURL = snapshot.subscriptionURL
+        tunnelInterfaces = snapshot.tunnels
+    }
+
+    private func querySubscriptionUsage() {
+        guard let subscriptionURL else { return }
+        subscriptionLoading = true
+        subscriptionFailed = false
+        Task {
+            defer { subscriptionLoading = false }
+            do {
+                subscriptionUsage = try await ProxyUsageService.fetchSubscriptionUsage(from: subscriptionURL)
+            } catch {
+                subscriptionFailed = true
+                store.lastError = store.loc("订阅用量查询失败。", "Subscription quota lookup failed.")
             }
         }
     }

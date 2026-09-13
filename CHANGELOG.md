@@ -13,6 +13,7 @@ Key user-visible changes to XFinder. Newest first.
 - Settings → About shows the app version and build number with a user-initiated Check for Updates (GitHub latest release).
 - Settings → Storage shows the system volume's total/used/available capacity with a progress bar (Finder's available-space convention).
 - Each file pane's new status bar shows the top-level item count and the directory's recursive on-disk size, computed in the background with cancellation.
+- Network Status gains a Proxy & Tunnel Usage section: Shadowrocket's local cumulative counters, an on-demand subscription quota check (upload/download/total/expiry from the provider's own header), and active tunnel interface counters covering OpenVPN and other VPN clients.
 
 ## [0.6.2] — Toolbar Cleanup
 
